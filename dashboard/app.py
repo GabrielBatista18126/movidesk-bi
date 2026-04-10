@@ -1,0 +1,101 @@
+"""
+Movidesk BI — Dashboard Streamlit
+Rode com: streamlit run dashboard/app.py
+"""
+import sys
+from pathlib import Path
+
+# Garante que a raiz do projeto está no path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import streamlit as st
+from streamlit_autorefresh import st_autorefresh
+
+st.set_page_config(
+    page_title="Movidesk BI",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# CSS global
+st.markdown("""
+<style>
+    .metric-card {
+        background: #1e1e2e;
+        border-radius: 10px;
+        padding: 16px 20px;
+        border-left: 4px solid #7c3aed;
+    }
+    .badge-estourado { background:#C00000;color:#fff;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:bold }
+    .badge-critico   { background:#FF6B00;color:#fff;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:bold }
+    .badge-atencao   { background:#FFC000;color:#000;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:bold }
+    .badge-normal    { background:#70AD47;color:#fff;padding:3px 10px;border-radius:4px;font-size:12px;font-weight:bold }
+    [data-testid="stSidebar"] { background-color: #0f0f1a; }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Navegação ──────────────────────────────────────────────────────
+with st.sidebar:
+    st.image("https://i.imgur.com/placeholder.png", width=40) if False else None
+    st.markdown("## 📊 Movidesk BI")
+    st.markdown("---")
+
+    pagina = st.radio(
+        "Navegação",
+        options=[
+            "🏠 Visão Geral",
+            "📋 Consumo de Contrato",
+            "🚨 Alertas",
+            "👥 Produtividade",
+            "🎫 Tickets em Aberto",
+            "🤖 Inteligência",
+            "⚙️ Monitor ETL",
+        ],
+        label_visibility="collapsed",
+    )
+    st.markdown("---")
+    if st.button("🔄 Atualizar dados"):
+        with st.spinner("Buscando dados do Movidesk..."):
+            try:
+                from etl.main import run
+                run(full_load=False)
+            except SystemExit:
+                pass
+            except Exception as exc:
+                st.error(f"ETL falhou: {exc}")
+        st.cache_data.clear()
+        st.rerun()
+    st.caption("Auto-refresh a cada 5 min · Cache: 2 min")
+
+# Auto-refresh a cada 5 minutos (300_000 ms)
+st_autorefresh(interval=300_000, limit=None, key="auto_refresh")
+
+# ── Páginas ───────────────────────────────────────────────────────
+if pagina == "🏠 Visão Geral":
+    from dashboard._pages import visao_geral
+    visao_geral.render()
+
+elif pagina == "📋 Consumo de Contrato":
+    from dashboard._pages import consumo
+    consumo.render()
+
+elif pagina == "🚨 Alertas":
+    from dashboard._pages import alertas
+    alertas.render()
+
+elif pagina == "👥 Produtividade":
+    from dashboard._pages import produtividade
+    produtividade.render()
+
+elif pagina == "🎫 Tickets em Aberto":
+    from dashboard._pages import tickets
+    tickets.render()
+
+elif pagina == "🤖 Inteligência":
+    from dashboard._pages import inteligencia
+    inteligencia.render()
+
+elif pagina == "⚙️ Monitor ETL":
+    from dashboard._pages import etl_monitor
+    etl_monitor.render()

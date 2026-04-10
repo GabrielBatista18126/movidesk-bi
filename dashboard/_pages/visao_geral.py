@@ -1,0 +1,279 @@
+"""Página: Visão Geral — Layout baseado no dashboard de referência."""
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+import pandas as pd
+
+from dashboard import db
+
+
+# ── Paleta fixa de cores para analistas ────────────────────────
+_CORES_ANALISTAS = [
+    "#3498db", "#2ecc71", "#e67e22", "#1abc9c", "#9b59b6",
+    "#e74c3c", "#f39c12", "#e91e63", "#00bcd4", "#8bc34a",
+]
+
+
+def _risco_cliente(horas: float, total: float) -> str:
+    pct = horas / total * 100 if total > 0 else 0
+    if pct >= 20:
+        return "alto"
+    elif pct >= 10:
+        return "médio"
+    return "baixo"
+
+
+def _cor_risco(risco: str) -> str:
+    return {"alto": "#e74c3c", "médio": "#f39c12", "baixo": "#2ecc71"}.get(risco, "#999")
+
+
+def render():
+    # ── Carrega dados (sem filtro) ──────────────────────────────
+    horas_dia_raw = db.horas_por_dia_agente()
+    horas_cliente_raw = db.horas_por_cliente_mes()
+    horas_analista_raw = db.horas_por_analista_mes()
+    tipo_prob_raw = db.tipo_problema_mes()
+    prioridade_raw = db.prioridade_mes()
+
+    # ── Filtros ──────────────────────────────────────────────────
+    datas_disp = sorted(horas_dia_raw["data"].unique().tolist()) if not horas_dia_raw.empty else []
+    analistas_disp = sorted(horas_dia_raw["analista"].unique().tolist()) if not horas_dia_raw.empty else []
+
+    with st.container():
+        fc1, fc2 = st.columns([1, 1])
+        with fc1:
+            opcoes_data = ["Todos os dias"] + [str(d) for d in datas_disp]
+            opcao_data = st.selectbox("Data:", opcoes_data, key="filtro_data")
+        with fc2:
+            opcoes_analista = ["Todos os analistas"] + analistas_disp
+            opcao_analista = st.selectbox("Analista:", opcoes_analista, key="filtro_analista")
+
+    # ── Aplica filtros ──────────────────────────────────────────
+    horas_dia = horas_dia_raw.copy()
+    horas_cliente = horas_cliente_raw.copy()
+    horas_analista = horas_analista_raw.copy()
+    tipo_prob = tipo_prob_raw.copy()
+    prioridade = prioridade_raw.copy()
+
+    filtro_data_ativo = opcao_data != "Todos os dias"
+    filtro_analista_ativo = opcao_analista != "Todos os analistas"
+
+    if filtro_data_ativo:
+        horas_dia = horas_dia[horas_dia["data"].astype(str) == opcao_data]
+    if filtro_analista_ativo:
+        horas_dia = horas_dia[horas_dia["analista"] == opcao_analista]
+        horas_analista = horas_analista[horas_analista["analista"] == opcao_analista]
+
+    # Recalcula KPIs a partir dos dados filtrados
+    total_horas = float(horas_dia["horas"].sum()) if not horas_dia.empty else 0
+    total_apontamentos = int(horas_analista["apontamentos"].sum()) if not horas_analista.empty else 0
+    total_clientes = int(horas_analista["clientes"].sum()) if not horas_analista.empty else 0
+    total_analistas = int(horas_analista["analista"].nunique()) if not horas_analista.empty else 0
+
+    # Se nenhum filtro, usa KPIs originais (mais precisos)
+    if not filtro_data_ativo and not filtro_analista_ativo:
+        kpis = db.visao_geral_kpis()
+        total_horas = float(kpis["total_horas"].iloc[0]) if not kpis.empty else 0
+        total_apontamentos = int(kpis["total_apontamentos"].iloc[0]) if not kpis.empty else 0
+        total_clientes = int(kpis["total_clientes"].iloc[0]) if not kpis.empty else 0
+        total_analistas = int(kpis["total_analistas"].iloc[0]) if not kpis.empty else 0
+
+    # ── Banner de alerta ─────────────────────────────────────────
+    if not horas_cliente.empty and not horas_analista.empty:
+        top_cli = horas_cliente.iloc[0]
+        top_ana = horas_analista.iloc[0]
+        pct_cli = top_cli["horas"] / total_horas * 100 if total_horas > 0 else 0
+        pct_ana = top_ana["horas"] / total_horas * 100 if total_horas > 0 else 0
+        st.warning(
+            f"⚠ Maior cliente: **{top_cli['cliente']}** — {top_cli['horas']}h ({pct_cli:.0f}%). "
+            f"Maior carga: **{top_ana['analista']}** — {top_ana['horas']}h ({pct_ana:.0f}%)."
+        )
+
+    # ── KPIs ─────────────────────────────────────────────────────
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total de horas", f"{total_horas:.1f}h", help="período completo")
+    k2.metric("Apontamentos", f"{total_apontamentos}", help="registros")
+    k3.metric("Clientes", f"{total_clientes}", help="com horas")
+    k4.metric("Analistas", f"{total_analistas}", help="ativos")
+
+    # ── Horas lançadas por colaborador por dia ───────────────────
+    st.markdown("---")
+    if not horas_dia.empty:
+        st.subheader("Horas lançadas por colaborador por dia")
+        analistas = horas_dia["analista"].unique().tolist()
+        cor_map = {a: _CORES_ANALISTAS[i % len(_CORES_ANALISTAS)] for i, a in enumerate(analistas)}
+
+        pivot = horas_dia.pivot_table(index="data", columns="analista", values="horas", fill_value=0)
+        fig_dia = go.Figure()
+        for analista in analistas:
+            if analista in pivot.columns:
+                fig_dia.add_trace(go.Bar(
+                    name=analista,
+                    x=pivot.index,
+                    y=pivot[analista],
+                    marker_color=cor_map[analista],
+                ))
+        fig_dia.update_layout(
+            barmode="group",
+            height=380,
+            margin=dict(l=0, r=0, t=10, b=40),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            xaxis=dict(
+                tickformat="%d/%m/%Y",
+                showgrid=False,
+                title="Data",
+            ),
+            yaxis=dict(
+                gridcolor="rgba(0,0,0,0.08)",
+                title="Horas",
+            ),
+        )
+        st.plotly_chart(fig_dia, width="stretch")
+
+    # ── Horas por cliente + Tipo de problema ─────────────────────
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Horas por cliente")
+        if not horas_cliente.empty:
+            fig_cli = px.bar(
+                horas_cliente,
+                x="cliente",
+                y="horas",
+                color="cliente",
+                labels={"cliente": "", "horas": "Horas"},
+                text="horas",
+            )
+            fig_cli.update_traces(texttemplate="%{text:.1f}", textposition="outside")
+            fig_cli.update_layout(
+                showlegend=False,
+                height=350,
+                margin=dict(l=0, r=0, t=10, b=80),
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                xaxis=dict(tickangle=-35, showgrid=False),
+                yaxis=dict(gridcolor="rgba(0,0,0,0.08)"),
+            )
+            st.plotly_chart(fig_cli, width="stretch")
+
+    with col2:
+        st.subheader("Tipo de problema")
+        if not tipo_prob.empty:
+            fig_tipo = px.pie(
+                tipo_prob,
+                names="tipo",
+                values="horas",
+                hole=0.45,
+            )
+            fig_tipo.update_layout(
+                height=350,
+                margin=dict(l=0, r=0, t=10, b=10),
+                paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(font=dict(size=10)),
+            )
+            st.plotly_chart(fig_tipo, width="stretch")
+
+    # ── Carga por analista + Prioridade ──────────────────────────
+    st.markdown("---")
+    col3, col4 = st.columns(2)
+
+    with col3:
+        st.subheader("Carga por analista")
+        if not horas_analista.empty:
+            df_ana = horas_analista.copy()
+            df_ana["pct"] = (df_ana["horas"] / total_horas * 100).round(0).astype(int)
+            df_ana["label"] = df_ana["horas"].astype(str) + "h"
+            fig_ana = px.bar(
+                df_ana.sort_values("horas"),
+                x="horas",
+                y="analista",
+                orientation="h",
+                text="label",
+                color_discrete_sequence=["#2ecc71"],
+                labels={"analista": "", "horas": ""},
+            )
+            fig_ana.update_traces(textposition="inside", textfont_color="white")
+            # Add pct annotation on the right
+            for i, row in df_ana.sort_values("horas").reset_index(drop=True).iterrows():
+                fig_ana.add_annotation(
+                    x=row["horas"] + total_horas * 0.02,
+                    y=row["analista"],
+                    text=f"{row['pct']}%",
+                    showarrow=False,
+                    font=dict(size=11),
+                )
+            fig_ana.update_layout(
+                showlegend=False,
+                height=320,
+                margin=dict(l=0, r=40, t=10, b=10),
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                xaxis=dict(showgrid=False, showticklabels=False),
+                yaxis=dict(showgrid=False),
+            )
+            st.plotly_chart(fig_ana, width="stretch")
+
+    with col4:
+        st.subheader("Prioridade")
+        if not prioridade.empty:
+            fig_pri = px.pie(
+                prioridade,
+                names="prioridade",
+                values="qtd_tickets",
+                hole=0.45,
+            )
+            fig_pri.update_layout(
+                height=320,
+                margin=dict(l=0, r=0, t=10, b=10),
+                paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(font=dict(size=10)),
+            )
+            st.plotly_chart(fig_pri, width="stretch")
+
+    # ── Detalhamento por cliente ─────────────────────────────────
+    st.markdown("---")
+    st.subheader("Detalhamento por cliente")
+    if not horas_cliente.empty:
+        df_det_cli = horas_cliente.copy()
+        df_det_cli["pct"] = (df_det_cli["horas"] / total_horas * 100).round(0).astype(int).astype(str) + "%"
+        df_det_cli["risco"] = df_det_cli["horas"].apply(lambda h: _risco_cliente(h, total_horas))
+        df_det_cli["barra"] = df_det_cli["horas"] / df_det_cli["horas"].max()
+        df_det_cli["horas_fmt"] = df_det_cli["horas"].apply(lambda h: f"{h:.1f}h")
+
+        for _, row in df_det_cli.iterrows():
+            c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 1, 4])
+            c1.write(row["cliente"])
+            c2.write(f"**{row['horas_fmt']}**")
+            c3.write(row["pct"])
+            cor = _cor_risco(row["risco"])
+            c4.markdown(
+                f'<span style="background:{cor};color:#fff;padding:2px 8px;'
+                f'border-radius:4px;font-size:12px">{row["risco"]}</span>',
+                unsafe_allow_html=True,
+            )
+            c5.progress(min(row["barra"], 1.0))
+
+    # ── Detalhamento por analista ────────────────────────────────
+    st.markdown("---")
+    st.subheader("Detalhamento por analista")
+    if not horas_analista.empty:
+        df_det_ana = horas_analista.copy()
+        df_det_ana["pct"] = (df_det_ana["horas"] / total_horas * 100).round(0).astype(int).astype(str) + "%"
+        df_det_ana["status"] = "ok"
+        df_det_ana["barra"] = df_det_ana["horas"] / df_det_ana["horas"].max()
+        df_det_ana["horas_fmt"] = df_det_ana["horas"].apply(lambda h: f"{h:.1f}h")
+
+        for _, row in df_det_ana.iterrows():
+            c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 1, 4])
+            c1.write(row["analista"])
+            c2.write(f"**{row['horas_fmt']}**")
+            c3.write(row["pct"])
+            c4.markdown(
+                '<span style="background:#2ecc71;color:#fff;padding:2px 8px;'
+                'border-radius:4px;font-size:12px">ok</span>',
+                unsafe_allow_html=True,
+            )
+            c5.progress(min(row["barra"], 1.0))

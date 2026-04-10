@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movidesk BI — Documentacao do Sistema</title>
+    <style>
+        :root {
+            --bg: #0f0f1a;
+            --surface: #1a1a2e;
+            --surface2: #16213e;
+            --border: #2a2a4a;
+            --text: #e0e0e0;
+            --text-muted: #8888aa;
+            --accent: #7c3aed;
+            --accent2: #3b82f6;
+            --green: #2ecc71;
+            --orange: #f39c12;
+            --red: #e74c3c;
+            --cyan: #00bcd4;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            position: fixed;
+            left: 0; top: 0;
+            width: 280px;
+            height: 100vh;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            padding: 24px 0;
+            z-index: 100;
+        }
+        .sidebar-title {
+            padding: 0 24px 20px;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--accent);
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 16px;
+        }
+        .sidebar a {
+            display: block;
+            padding: 8px 24px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .sidebar a:hover { color: var(--accent); background: rgba(124,58,237,0.1); }
+        .sidebar a.section-title {
+            color: var(--text);
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+        .sidebar a.section-title:first-child { border-top: none; margin-top: 0; }
+
+        /* Main Content */
+        .main {
+            margin-left: 280px;
+            padding: 40px 60px;
+            max-width: 1100px;
+        }
+        h1 {
+            font-size: 36px;
+            font-weight: 800;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle { color: var(--text-muted); font-size: 16px; margin-bottom: 40px; }
+        h2 {
+            font-size: 24px;
+            font-weight: 700;
+            margin: 48px 0 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--accent);
+            color: var(--text);
+        }
+        h3 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 32px 0 12px;
+            color: var(--accent2);
+        }
+        h4 {
+            font-size: 15px;
+            font-weight: 600;
+            margin: 20px 0 8px;
+            color: var(--cyan);
+        }
+        p { margin-bottom: 12px; }
+
+        /* Cards */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 4px solid var(--accent);
+        }
+        .card h4 { margin: 0 0 8px; color: var(--accent); }
+        .card p { margin: 0; font-size: 14px; color: var(--text-muted); }
+        .card.green  { border-left-color: var(--green); }
+        .card.green h4 { color: var(--green); }
+        .card.orange { border-left-color: var(--orange); }
+        .card.orange h4 { color: var(--orange); }
+        .card.red    { border-left-color: var(--red); }
+        .card.red h4 { color: var(--red); }
+        .card.cyan   { border-left-color: var(--cyan); }
+        .card.cyan h4 { color: var(--cyan); }
+
+        /* Code blocks */
+        code {
+            background: var(--surface2);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            color: var(--cyan);
+        }
+        pre {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            overflow-x: auto;
+            margin: 12px 0 20px;
+            font-size: 13px;
+            line-height: 1.6;
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+        }
+        pre code { background: none; padding: 0; }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0 24px;
+            font-size: 14px;
+        }
+        th {
+            background: var(--surface2);
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--accent);
+            border-bottom: 2px solid var(--accent);
+        }
+        td {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        tr:hover td { background: rgba(124,58,237,0.05); }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-purple { background: var(--accent); color: #fff; }
+        .badge-blue   { background: var(--accent2); color: #fff; }
+        .badge-green  { background: var(--green); color: #fff; }
+        .badge-orange { background: var(--orange); color: #000; }
+        .badge-red    { background: var(--red); color: #fff; }
+
+        /* Diagram */
+        .diagram {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 20px 0;
+            text-align: center;
+            font-family: 'Cascadia Code', monospace;
+            font-size: 14px;
+            line-height: 2;
+            overflow-x: auto;
+            white-space: pre;
+        }
+
+        /* Alerts */
+        .alert {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+        .alert-info    { background: rgba(59,130,246,0.15); border-left: 4px solid var(--accent2); }
+        .alert-warning { background: rgba(243,156,18,0.15); border-left: 4px solid var(--orange); }
+        .alert-success { background: rgba(46,204,113,0.15); border-left: 4px solid var(--green); }
+
+        /* Lists */
+        ul, ol { margin: 8px 0 16px 24px; }
+        li { margin-bottom: 6px; }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .sidebar { display: none; }
+            .main { margin-left: 0; padding: 24px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ========== SIDEBAR ========== -->
+<nav class="sidebar">
+    <div class="sidebar-title">Movidesk BI</div>
+
+    <a href="#visao-geral" class="section-title">Visao Geral</a>
+    <a href="#o-que-e">O que e o sistema</a>
+    <a href="#tecnologias">Tecnologias</a>
+    <a href="#arquitetura">Arquitetura</a>
+
+    <a href="#etl" class="section-title">Pipeline ETL</a>
+    <a href="#etl-fluxo">Fluxo completo</a>
+    <a href="#etl-extractor">Extractor (API)</a>
+    <a href="#etl-transformer">Transformer</a>
+    <a href="#etl-loader">Loader</a>
+    <a href="#etl-dw">Data Warehouse</a>
+    <a href="#etl-ml">Machine Learning</a>
+    <a href="#etl-reconciliacao">Reconciliacao</a>
+    <a href="#etl-scheduler">Scheduler</a>
+
+    <a href="#banco" class="section-title">Banco de Dados</a>
+    <a href="#banco-schemas">Schemas</a>
+    <a href="#banco-raw">Camada Raw</a>
+    <a href="#banco-analytics">Camada Analytics</a>
+    <a href="#banco-views">Views</a>
+
+    <a href="#dashboard" class="section-title">Dashboard</a>
+    <a href="#dash-paginas">Paginas</a>
+    <a href="#dash-visao">Visao Geral</a>
+    <a href="#dash-consumo">Consumo de Contrato</a>
+    <a href="#dash-alertas">Alertas</a>
+    <a href="#dash-produtividade">Produtividade</a>
+    <a href="#dash-tickets">Tickets em Aberto</a>
+    <a href="#dash-inteligencia">Inteligencia</a>
+    <a href="#dash-monitor">Monitor ETL</a>
+
+    <a href="#operacao" class="section-title">Operacao</a>
+    <a href="#como-iniciar">Como iniciar</a>
+    <a href="#comandos">Comandos uteis</a>
+    <a href="#contratos">Gerenciar contratos</a>
+    <a href="#alertas-email">Alertas por e-mail</a>
+    <a href="#troubleshooting">Troubleshooting</a>
+</nav>
+
+<!-- ========== MAIN CONTENT ========== -->
+<div class="main">
+
+<!-- ────────── VISAO GERAL ────────── -->
+<h1 id="visao-geral">Movidesk BI</h1>
+<p class="subtitle">Documentacao completa do sistema de Business Intelligence para Movidesk</p>
+
+<h2 id="o-que-e">O que e o sistema</h2>
+<p>O <strong>Movidesk BI</strong> e um sistema completo de Business Intelligence que extrai dados da API do Movidesk, transforma e armazena em um Data Warehouse PostgreSQL, e apresenta dashboards interativos via Streamlit.</p>
+
+<div class="card-grid">
+    <div class="card">
+        <h4>ETL Automatico</h4>
+        <p>Pipeline que roda a cada 5 minutos, extraindo dados da API do Movidesk, transformando e carregando no banco de dados.</p>
+    </div>
+    <div class="card green">
+        <h4>100% Acuracia</h4>
+        <p>Reconciliacao automatica garante que os dados do dashboard sao identicos aos do Movidesk. Entries deletadas sao removidas automaticamente.</p>
+    </div>
+    <div class="card orange">
+        <h4>Inteligencia</h4>
+        <p>Previsao de estouro de contrato via projecao linear e score de risco (0-100) por cliente com classificacao automatica.</p>
+    </div>
+    <div class="card cyan">
+        <h4>7 Dashboards</h4>
+        <p>Visao Geral, Consumo de Contrato, Alertas, Produtividade, Tickets em Aberto, Inteligencia e Monitor ETL.</p>
+    </div>
+</div>
+
+<h2 id="tecnologias">Tecnologias</h2>
+<table>
+    <thead>
+        <tr><th>Componente</th><th>Tecnologia</th><th>Versao</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>Linguagem</td><td>Python</td><td>3.14+</td></tr>
+        <tr><td>Banco de Dados</td><td>PostgreSQL</td><td>15+</td></tr>
+        <tr><td>Dashboard</td><td>Streamlit</td><td>1.40+</td></tr>
+        <tr><td>Graficos</td><td>Plotly Express / Graph Objects</td><td>5.x</td></tr>
+        <tr><td>ORM/SQL</td><td>psycopg2 + SQLAlchemy</td><td>-</td></tr>
+        <tr><td>ML</td><td>NumPy (regressao linear)</td><td>-</td></tr>
+        <tr><td>API</td><td>Movidesk REST/OData v4</td><td>v1</td></tr>
+        <tr><td>Auto-refresh</td><td>streamlit-autorefresh</td><td>-</td></tr>
+    </tbody>
+</table>
+
+<h2 id="arquitetura">Arquitetura do Sistema</h2>
+<div class="diagram">
+┌─────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│   Movidesk API  │────>│   ETL Pipeline   │────>│   PostgreSQL DB  │
+│  (REST/OData)   │     │                  │     │                  │
+│                 │     │  extractor.py    │     │  raw.*           │
+│  /tickets       │     │  transformer.py  │     │  analytics.*     │
+│  /persons       │     │  loader.py       │     │                  │
+└─────────────────┘     │  dw.py           │     └────────┬─────────┘
+                        │  ml.py           │              │
+                        │  alerts.py       │              │
+                        └──────────────────┘              │
+                                                          v
+┌─────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│   Scheduler     │     │   Streamlit      │<────│   SQLAlchemy     │
+│                 │     │   Dashboard      │     │   (db.py)        │
+│  Roda ETL a     │     │                  │     │                  │
+│  cada 5 min     │     │  7 paginas       │     │  Cache TTL: 2min │
+│                 │     │  Auto-refresh    │     │                  │
+└─────────────────┘     └──────────────────┘     └──────────────────┘
+</div>
+
+<!-- ────────── ETL ────────── -->
+<h2 id="etl">Pipeline ETL</h2>
+
+<h3 id="etl-fluxo">Fluxo Completo</h3>
+<p>O pipeline e orquestrado pelo <code>etl/main.py</code> e segue esta ordem:</p>
+
+<div class="diagram">
+1. Persons (API)           2. Tickets + Actions (API)         3. Data Warehouse
+   ├─ /persons?type=2         ├─ /tickets?$expand=...            ├─ dim_tempo
+   │  (clientes)              │  clients, owner, actions,        ├─ dim_clientes
+   ├─ /persons?type=4         │  timeAppointments, createdBy     ├─ dim_agentes
+   │  (agentes)               ├─ Extrai organizacoes             ├─ fact_consumo
+   └─ Upsert raw.*            ├─ Extrai agentes                 └─ fact_tickets
+                              ├─ Transforma tickets
+                              ├─ Transforma time_entries     4. Machine Learning
+                              ├─ Upsert raw.*                   ├─ Previsoes consumo
+                              └─ Reconciliacao                  ├─ Score de risco
+                                 (remove orfaos)                └─ Alertas e-mail
+</div>
+
+<h3 id="etl-extractor">Extractor (<code>etl/extractor.py</code>)</h3>
+<p>Responsavel por consumir a API REST do Movidesk com:</p>
+<ul>
+    <li><strong>Paginacao automatica</strong> — busca em lotes de 50 registros (configuravel via <code>PAGE_SIZE</code>)</li>
+    <li><strong>Retry com backoff</strong> — ate 3 tentativas com delay progressivo</li>
+    <li><strong>Rate limiting</strong> — respeita header <code>Retry-After</code> em respostas 429</li>
+    <li><strong>Modo incremental</strong> — usa watermark (<code>lastUpdate gt {timestamp}</code>) para buscar apenas tickets atualizados</li>
+    <li><strong>OData v4</strong> — datas no formato ISO direto (<code>2026-04-08T08:05:31Z</code>), sem wrapper <code>datetime'...'</code></li>
+</ul>
+
+<h4>Endpoints consumidos</h4>
+<table>
+    <thead><tr><th>Endpoint</th><th>$expand</th><th>Uso</th></tr></thead>
+    <tbody>
+        <tr>
+            <td><code>/persons</code></td>
+            <td>-</td>
+            <td>Clientes (type=2) e Agentes (type=4)</td>
+        </tr>
+        <tr>
+            <td><code>/tickets</code></td>
+            <td><code>clients($expand=organization), owner, actions($expand=timeAppointments,createdBy)</code></td>
+            <td>Tickets, apontamentos de horas, organizacoes, agentes</td>
+        </tr>
+    </tbody>
+</table>
+
+<div class="alert alert-info">
+    <strong>Importante:</strong> O campo <code>createdBy</code> nos <code>timeAppointments</code> e sempre <code>null</code>.
+    O agente correto vem de <code>action.createdBy</code>, por isso o <code>$expand=createdBy</code> e aplicado nas <strong>actions</strong>.
+</div>
+
+<h3 id="etl-transformer">Transformer (<code>etl/transformer.py</code>)</h3>
+<p>Normaliza e limpa os dados brutos da API. Principais transformacoes:</p>
+
+<table>
+    <thead><tr><th>Transformacao</th><th>Detalhe</th></tr></thead>
+    <tbody>
+        <tr>
+            <td><strong>Timezone (noon UTC)</strong></td>
+            <td>Datas de apontamento (<code>timeAppointment.date</code>) sao armazenadas como meio-dia UTC (12:00) para evitar shift de dia por timezone. A API retorna <code>2026-04-01T00:00:00</code> em horario local (BRT). Se armazenado como meia-noite UTC, em UTC-3 vira 31/03.</td>
+        </tr>
+        <tr>
+            <td><strong>Organizacao</strong></td>
+            <td>Prioriza <code>client.organization</code> para agrupar por empresa. Fallback: se o proprio client e personType=2, usa ele como organizacao.</td>
+        </tr>
+        <tr>
+            <td><strong>Agente</strong></td>
+            <td>Extrai de <code>action.createdBy</code> (quem criou a acao no ticket). Fallback: <code>ticket.owner</code>.</td>
+        </tr>
+        <tr>
+            <td><strong>Horas</strong></td>
+            <td>Campo <code>accountedTime</code> (Double) — arredondado para 4 casas decimais. Ignora entries com hours &lt;= 0.</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3 id="etl-loader">Loader (<code>etl/loader.py</code>)</h3>
+<p>Persiste dados no PostgreSQL via <strong>upsert</strong> (INSERT ... ON CONFLICT DO UPDATE):</p>
+<ul>
+    <li><code>upsert_organizacoes()</code> — tabela <code>raw.organizacoes</code></li>
+    <li><code>upsert_clientes()</code> — tabela <code>raw.clientes</code> (compatibilidade)</li>
+    <li><code>upsert_agentes()</code> — tabela <code>raw.agentes</code></li>
+    <li><code>upsert_tickets()</code> — tabela <code>raw.tickets</code></li>
+    <li><code>upsert_time_entries()</code> — tabela <code>raw.time_entries</code></li>
+    <li><code>reconcile_time_entries()</code> — remove entries orfas (ver secao Reconciliacao)</li>
+</ul>
+
+<p>Tambem gerencia o <strong>watermark</strong> (<code>raw.etl_watermark</code>) e o <strong>log de execucao</strong> (<code>raw.etl_log</code>).</p>
+
+<h3 id="etl-dw">Data Warehouse (<code>etl/dw.py</code>)</h3>
+<p>Popula a camada analitica em star schema:</p>
+
+<div class="card-grid">
+    <div class="card cyan">
+        <h4>dim_tempo</h4>
+        <p>Calendario completo 2020-2030. Chave: YYYYMMDD. Campos: ano, semestre, trimestre, mes, semana, dia, dia_semana, e_fim_semana.</p>
+    </div>
+    <div class="card cyan">
+        <h4>dim_clientes</h4>
+        <p>Populada de <code>raw.organizacoes</code> + contrato vigente. Inclui plano, horas contratadas, vigencia.</p>
+    </div>
+    <div class="card cyan">
+        <h4>dim_agentes</h4>
+        <p>Populada de <code>raw.agentes</code>. Inclui nome, email, time, status.</p>
+    </div>
+    <div class="card">
+        <h4>fact_consumo</h4>
+        <p>Uma linha por time_entry. JOIN com dims via organization_id. Campos: horas_gastas, mes_referencia.</p>
+    </div>
+    <div class="card">
+        <h4>fact_tickets</h4>
+        <p>Uma linha por ticket. Campos: status, tipo, categoria, urgencia, dias_para_resolver, esta_aberto.</p>
+    </div>
+</div>
+
+<h3 id="etl-ml">Machine Learning (<code>etl/ml.py</code>)</h3>
+
+<h4>Previsao de Consumo</h4>
+<p>Projecao linear simples: <code>taxa_diaria = horas_ate_agora / dias_passados</code>, projetada para o total de dias do mes. Grava em <code>analytics.previsoes_consumo</code>.</p>
+
+<h4>Score de Risco (0-100)</h4>
+<p>Calcula um score composto para cada cliente com contrato:</p>
+<table>
+    <thead><tr><th>Componente</th><th>Peso</th><th>Descricao</th></tr></thead>
+    <tbody>
+        <tr><td>Historico de estouros</td><td>40%</td><td>% de meses em que o cliente estourou o contrato</td></tr>
+        <tr><td>Tendencia</td><td>30%</td><td>Regressao linear sobre o % de consumo (crescimento)</td></tr>
+        <tr><td>Volatilidade</td><td>20%</td><td>Desvio padrao do consumo mensal</td></tr>
+        <tr><td>Urgencia tickets</td><td>10%</td><td>% de tickets High/Urgent no periodo</td></tr>
+    </tbody>
+</table>
+
+<p><strong>Classificacao:</strong></p>
+<p>
+    <span class="badge badge-green">0-24: BAIXO</span>
+    <span class="badge badge-blue">25-49: MEDIO</span>
+    <span class="badge badge-orange">50-74: ALTO</span>
+    <span class="badge badge-red">75-100: CRITICO</span>
+</p>
+
+<h3 id="etl-reconciliacao">Reconciliacao de Dados</h3>
+<div class="alert alert-success">
+    <strong>Garantia de 100% de acuracia.</strong> Quando um apontamento de horas e deletado no Movidesk, o ETL detecta e remove do banco automaticamente.
+</div>
+
+<p>Dois modos de reconciliacao:</p>
+<table>
+    <thead><tr><th>Modo</th><th>Quando roda</th><th>O que faz</th></tr></thead>
+    <tbody>
+        <tr>
+            <td><span class="badge badge-purple">Full Load</span></td>
+            <td><code>--full</code></td>
+            <td>Compara TODOS os IDs de time_entries no banco com os da API. Remove qualquer ID que nao existe mais na API.</td>
+        </tr>
+        <tr>
+            <td><span class="badge badge-blue">Incremental</span></td>
+            <td>A cada ciclo (5 min)</td>
+            <td>Para cada ticket atualizado, verifica se alguma entry foi deletada e remove do banco.</td>
+        </tr>
+    </tbody>
+</table>
+
+<h3 id="etl-scheduler">Scheduler (<code>scripts/etl_scheduler.py</code>)</h3>
+<p>Processo background que executa o ETL incremental automaticamente a cada N minutos.</p>
+<pre><code># Padrao: a cada 5 minutos
+python scripts/etl_scheduler.py
+
+# Customizar intervalo
+python scripts/etl_scheduler.py --interval 3
+
+# Full load a cada ciclo
+python scripts/etl_scheduler.py --full
+
+# Rodar em background no Windows
+start /B pythonw scripts/etl_scheduler.py</code></pre>
+
+<!-- ────────── BANCO ────────── -->
+<h2 id="banco">Banco de Dados</h2>
+
+<h3 id="banco-schemas">Schemas</h3>
+<table>
+    <thead><tr><th>Schema</th><th>Proposito</th></tr></thead>
+    <tbody>
+        <tr><td><code>raw</code></td><td>Dados brutos da API (staging). Tabelas: tickets, time_entries, clientes, agentes, organizacoes, etl_watermark, etl_log</td></tr>
+        <tr><td><code>analytics</code></td><td>Camada analitica (star schema + views). Dimensoes, fatos, previsoes, scores, contratos</td></tr>
+    </tbody>
+</table>
+
+<h3 id="banco-raw">Camada Raw</h3>
+<table>
+    <thead><tr><th>Tabela</th><th>Descricao</th><th>Chave</th></tr></thead>
+    <tbody>
+        <tr><td><code>raw.tickets</code></td><td>Tickets do Movidesk com status, tipo, categoria, datas, horas totais</td><td>id (texto)</td></tr>
+        <tr><td><code>raw.time_entries</code></td><td>Apontamentos de horas individuais. Cada lancamento de horas de um agente.</td><td>id (texto)</td></tr>
+        <tr><td><code>raw.agentes</code></td><td>Colaboradores/analistas que lancam horas</td><td>id (texto)</td></tr>
+        <tr><td><code>raw.clientes</code></td><td>Clientes (compatibilidade)</td><td>id (texto)</td></tr>
+        <tr><td><code>raw.organizacoes</code></td><td>Organizacoes (empresas) — fonte principal para agrupamento</td><td>id (texto)</td></tr>
+        <tr><td><code>raw.etl_watermark</code></td><td>Marca d'agua para extracao incremental (last_run por tabela)</td><td>table_name</td></tr>
+        <tr><td><code>raw.etl_log</code></td><td>Historico de execucoes do ETL (inicio, fim, status, registros)</td><td>id (serial)</td></tr>
+    </tbody>
+</table>
+
+<h3 id="banco-analytics">Camada Analytics</h3>
+<table>
+    <thead><tr><th>Tabela</th><th>Tipo</th><th>Descricao</th></tr></thead>
+    <tbody>
+        <tr><td><code>analytics.dim_tempo</code></td><td>Dimensao</td><td>Calendario 2020-2030</td></tr>
+        <tr><td><code>analytics.dim_clientes</code></td><td>Dimensao</td><td>Clientes + contrato vigente</td></tr>
+        <tr><td><code>analytics.dim_agentes</code></td><td>Dimensao</td><td>Agentes/analistas</td></tr>
+        <tr><td><code>analytics.fact_consumo</code></td><td>Fato</td><td>Um registro por time_entry</td></tr>
+        <tr><td><code>analytics.fact_tickets</code></td><td>Fato</td><td>Um registro por ticket</td></tr>
+        <tr><td><code>analytics.contratos</code></td><td>Config</td><td>Contratos de horas por cliente</td></tr>
+        <tr><td><code>analytics.previsoes_consumo</code></td><td>ML</td><td>Projecao de consumo por mes</td></tr>
+        <tr><td><code>analytics.score_clientes</code></td><td>ML</td><td>Score de risco 0-100</td></tr>
+    </tbody>
+</table>
+
+<h3 id="banco-views">Views Principais</h3>
+<table>
+    <thead><tr><th>View</th><th>Descricao</th></tr></thead>
+    <tbody>
+        <tr><td><code>v_resumo_mes_atual</code></td><td>Consumo por cliente no mes atual (horas, tickets, lancamentos)</td></tr>
+        <tr><td><code>v_consumo_mensal</code></td><td>Historico mensal de consumo por cliente</td></tr>
+        <tr><td><code>v_alerta_consumo</code></td><td>Clientes com status de consumo (NORMAL, ATENCAO, CRITICO, ESTOURADO)</td></tr>
+        <tr><td><code>v_historico_consumo</code></td><td>Historico com % de consumo vs contrato</td></tr>
+        <tr><td><code>v_produtividade_detalhada</code></td><td>Horas por agente por mes</td></tr>
+        <tr><td><code>v_produtividade_agente_resumo</code></td><td>Resumo de produtividade por agente (mes atual + historico)</td></tr>
+        <tr><td><code>v_sla_performance</code></td><td>Performance de SLA por mes</td></tr>
+        <tr><td><code>v_retrabalho</code></td><td>Taxa de retrabalho (tickets reabertos)</td></tr>
+        <tr><td><code>v_tickets_abertos</code></td><td>Tickets em aberto com dias aberto</td></tr>
+        <tr><td><code>v_top_tickets_mes</code></td><td>Top 50 tickets com mais horas no mes</td></tr>
+        <tr><td><code>v_sugestoes_upgrade</code></td><td>Clientes candidatos a upgrade de plano</td></tr>
+        <tr><td><code>v_contrato_vigente</code></td><td>Contrato ativo de cada cliente</td></tr>
+        <tr><td><code>v_etl_historico</code></td><td>Ultimas 20 execucoes do ETL</td></tr>
+    </tbody>
+</table>
+
+<!-- ────────── DASHBOARD ────────── -->
+<h2 id="dashboard">Dashboard</h2>
+
+<h3 id="dash-paginas">Paginas do Dashboard</h3>
+<p>O dashboard roda em Streamlit na porta <strong>8501</strong> com auto-refresh a cada 5 minutos e cache de queries com TTL de 2 minutos.</p>
+
+<h3 id="dash-visao">Visao Geral</h3>
+<p>Pagina principal com visao completa do mes atual:</p>
+<ul>
+    <li><strong>Filtros</strong> — por data e por analista (funcionais, filtram todos os graficos e KPIs)</li>
+    <li><strong>Banner de alerta</strong> — destaca maior cliente e analista com maior carga</li>
+    <li><strong>KPIs</strong> — Total de horas, apontamentos, clientes ativos, analistas ativos</li>
+    <li><strong>Horas por colaborador por dia</strong> — grafico de barras agrupadas (Plotly)</li>
+    <li><strong>Horas por cliente</strong> — grafico de barras vertical</li>
+    <li><strong>Tipo de problema</strong> — grafico donut (categoria + descricao)</li>
+    <li><strong>Carga por analista</strong> — barras horizontais com % de anotacao</li>
+    <li><strong>Prioridade</strong> — grafico donut (categoria + urgencia)</li>
+    <li><strong>Detalhamento por cliente</strong> — tabela com horas, %, badge de risco (alto/medio/baixo), barra de progresso</li>
+    <li><strong>Detalhamento por analista</strong> — tabela com horas, %, status, barra de progresso</li>
+</ul>
+
+<h3 id="dash-consumo">Consumo de Contrato</h3>
+<ul>
+    <li>Filtro por mes de referencia e por cliente</li>
+    <li>KPIs: total horas, clientes com lancamentos, tickets atendidos</li>
+    <li>Tabela de consumo por cliente (horas, tickets, lancamentos, ultimo lancamento)</li>
+    <li>Grafico de barras: horas consumidas por cliente (top 20)</li>
+    <li>Historico mensal de consumo (linha, top 10 clientes)</li>
+</ul>
+
+<h3 id="dash-alertas">Alertas</h3>
+<ul>
+    <li>Tabela de alerta de consumo com badges coloridos (ESTOURADO, CRITICO, ATENCAO, NORMAL)</li>
+    <li>Status automatico baseado no % de consumo vs contrato</li>
+</ul>
+
+<h3 id="dash-produtividade">Produtividade</h3>
+<ul>
+    <li>KPIs do time: horas lancadas, tickets atendidos, agentes ativos, eficiencia media</li>
+    <li>Ranking de horas por agente (barras horizontais)</li>
+    <li>Eficiencia: tickets por hora (barras horizontais)</li>
+    <li>Tabela detalhada por agente (horas, tickets, clientes, tkts/hora, h/ticket)</li>
+    <li>Evolucao historica de horas por agente (linha)</li>
+    <li>Tempo medio por ticket historico (linha)</li>
+</ul>
+
+<h3 id="dash-tickets">Tickets em Aberto</h3>
+<ul>
+    <li>Lista de tickets em aberto ordenados por dias aberto</li>
+    <li>Top tickets com mais horas consumidas no mes</li>
+</ul>
+
+<h3 id="dash-inteligencia">Inteligencia</h3>
+<ul>
+    <li>Previsoes de consumo para o mes corrente</li>
+    <li>Score de risco por cliente (0-100) com classificacao</li>
+    <li>Sugestoes de upgrade de plano</li>
+</ul>
+
+<h3 id="dash-monitor">Monitor ETL</h3>
+<ul>
+    <li>Historico das ultimas 20 execucoes do ETL</li>
+    <li>Status (SUCCESS/FAILURE), duracao, registros processados</li>
+</ul>
+
+<!-- ────────── OPERACAO ────────── -->
+<h2 id="operacao">Operacao</h2>
+
+<h3 id="como-iniciar">Como Iniciar o Sistema</h3>
+
+<h4>1. Configuracao (.env)</h4>
+<p>Crie um arquivo <code>.env</code> na raiz do projeto:</p>
+<pre><code># Movidesk
+MOVIDESK_TOKEN=seu_token_aqui
+MOVIDESK_BASE_URL=https://api.movidesk.com/public/v1
+
+# PostgreSQL
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=movidesk_bi
+DB_USER=movidesk_user
+DB_PASSWORD=sua_senha
+
+# Alertas por e-mail (opcional)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=seu@email.com
+SMTP_PASS=senha_do_email
+SMTP_FROM=seu@email.com
+ALERT_EMAIL=gestor@empresa.com</code></pre>
+
+<h4>2. Banco de dados</h4>
+<p>Execute os scripts SQL na ordem:</p>
+<pre><code>psql -d movidesk_bi -f sql/01_schemas.sql
+psql -d movidesk_bi -f sql/02_raw_tables.sql
+psql -d movidesk_bi -f sql/03_views.sql
+psql -d movidesk_bi -f sql/04_contratos.sql
+psql -d movidesk_bi -f sql/05_views_semana34.sql
+psql -d movidesk_bi -f sql/06_star_schema.sql
+psql -d movidesk_bi -f sql/07_inteligencia.sql
+psql -d movidesk_bi -f sql/08_refactoring_v2.sql
+psql -d movidesk_bi -f sql/09_filtros_consumo.sql
+psql -d movidesk_bi -f sql/10_contratos_iniciais.sql</code></pre>
+
+<h4>3. Primeiro full load</h4>
+<pre><code>python -m etl.main --full</code></pre>
+
+<h4>4. Iniciar scheduler + dashboard</h4>
+<pre><code># Terminal 1: Scheduler ETL (background)
+python scripts/etl_scheduler.py --interval 5
+
+# Terminal 2: Dashboard Streamlit
+streamlit run dashboard/app.py --server.port 8501</code></pre>
+
+<div class="alert alert-info">
+    O dashboard ficara disponivel em <strong>http://localhost:8501</strong>. O scheduler roda o ETL incremental a cada 5 minutos automaticamente.
+</div>
+
+<h3 id="comandos">Comandos Uteis</h3>
+<table>
+    <thead><tr><th>Comando</th><th>Descricao</th></tr></thead>
+    <tbody>
+        <tr><td><code>python -m etl.main</code></td><td>ETL incremental (busca apenas atualizacoes)</td></tr>
+        <tr><td><code>python -m etl.main --full</code></td><td>ETL full load (reprocessa tudo + reconciliacao)</td></tr>
+        <tr><td><code>python -m etl.main --persons</code></td><td>Atualiza apenas clientes e agentes</td></tr>
+        <tr><td><code>python scripts/etl_scheduler.py</code></td><td>Inicia scheduler (padrao: 5 min)</td></tr>
+        <tr><td><code>python scripts/etl_scheduler.py --interval 3</code></td><td>Scheduler a cada 3 minutos</td></tr>
+        <tr><td><code>streamlit run dashboard/app.py</code></td><td>Inicia o dashboard</td></tr>
+    </tbody>
+</table>
+
+<h3 id="contratos">Gerenciar Contratos</h3>
+<p>Os contratos ficam na tabela <code>analytics.contratos</code>. Para cadastrar um novo contrato:</p>
+<pre><code>INSERT INTO analytics.contratos (
+    organization_id, client_id, plano_nome,
+    horas_contratadas, vigencia_inicio, vigencia_fim,
+    tickets_excluidos
+) VALUES (
+    '2034758315',           -- organization_id do Movidesk
+    '2034758315',           -- client_id (mesmo valor)
+    'Plano 40h',            -- nome do plano
+    40,                     -- horas contratadas por mes
+    '2025-01-01',           -- inicio da vigencia
+    NULL,                   -- fim (NULL = indeterminado)
+    ''                      -- tickets excluidos (separados por virgula)
+);</code></pre>
+
+<div class="alert alert-warning">
+    <strong>Sem contrato cadastrado</strong>, o cliente aparecera como "SEM_CONTRATO" nos alertas. As horas continuam sendo contabilizadas normalmente — o contrato so afeta o calculo de % de consumo, alertas e previsoes.
+</div>
+
+<h3 id="alertas-email">Alertas por E-mail</h3>
+<p>O sistema envia 3 tipos de alerta automaticamente:</p>
+<table>
+    <thead><tr><th>Tipo</th><th>Quando</th><th>Descricao</th></tr></thead>
+    <tbody>
+        <tr>
+            <td><span class="badge badge-red">Estouro</span></td>
+            <td>Consumo >= 80% do contrato</td>
+            <td>Lista clientes que estouraram ou estao proximos de estourar</td>
+        </tr>
+        <tr>
+            <td><span class="badge badge-orange">Previsao</span></td>
+            <td>Projecao indica estouro</td>
+            <td>Clientes que ainda nao estouraram mas a tendencia indica estouro ate fim do mes</td>
+        </tr>
+        <tr>
+            <td><span class="badge badge-red">Falha ETL</span></td>
+            <td>Pipeline falha</td>
+            <td>Detalhes do erro para investigacao</td>
+        </tr>
+    </tbody>
+</table>
+<p>Configure as variaveis <code>SMTP_*</code> e <code>ALERT_EMAIL</code> no <code>.env</code> para ativar.</p>
+
+<h3 id="troubleshooting">Troubleshooting</h3>
+
+<h4>Dashboard mostrando dados antigos</h4>
+<ol>
+    <li>Clique no botao <strong>"Atualizar dados"</strong> na barra lateral (limpa o cache)</li>
+    <li>Verifique se o scheduler esta rodando: <code>tasklist | grep python</code></li>
+    <li>Rode um ETL manualmente: <code>python -m etl.main</code></li>
+</ol>
+
+<h4>Horas nao batem com o Movidesk</h4>
+<ol>
+    <li>Rode um full load com reconciliacao: <code>python -m etl.main --full</code></li>
+    <li>Isso remove entries deletadas no Movidesk que ainda estao no banco</li>
+    <li>Verifique se nao ha entries orfas: compare totais por mes entre API e banco</li>
+</ol>
+
+<h4>ETL falhando com erro 400</h4>
+<ul>
+    <li>Geralmente causado por formato OData incorreto. O sistema usa OData v4 (ISO direto)</li>
+    <li>Verifique o token no <code>.env</code> (<code>MOVIDESK_TOKEN</code>)</li>
+</ul>
+
+<h4>Agente aparecendo como "Sem agente"</h4>
+<ul>
+    <li>Pode ocorrer em entries antigas importadas antes da correcao do <code>$expand=createdBy</code></li>
+    <li>Solucao: <code>python -m etl.main --full</code> para reprocessar tudo</li>
+</ul>
+
+<!-- ────────── ESTRUTURA ────────── -->
+<h2>Estrutura de Arquivos</h2>
+<pre><code>movidesk-bi/
+├── .env                        # Variaveis de ambiente (nao commitado)
+├── etl/
+│   ├── __init__.py
+│   ├── config.py               # Configuracoes centralizadas
+│   ├── extractor.py            # Consumo da API Movidesk
+│   ├── transformer.py          # Normalizacao e limpeza
+│   ├── loader.py               # Persistencia no PostgreSQL
+│   ├── dw.py                   # Camada analitica (star schema)
+│   ├── ml.py                   # Previsoes e scores
+│   ├── alerts.py               # Envio de alertas por e-mail
+│   └── main.py                 # Orquestrador do pipeline
+├── dashboard/
+│   ├── __init__.py
+│   ├── app.py                  # Aplicacao Streamlit principal
+│   ├── db.py                   # Conexao e queries do dashboard
+│   └── _pages/
+│       ├── visao_geral.py      # Pagina: Visao Geral
+│       ├── consumo.py          # Pagina: Consumo de Contrato
+│       ├── alertas.py          # Pagina: Alertas
+│       ├── produtividade.py    # Pagina: Produtividade
+│       ├── tickets.py          # Pagina: Tickets em Aberto
+│       ├── inteligencia.py     # Pagina: Inteligencia
+│       └── etl_monitor.py      # Pagina: Monitor ETL
+├── scripts/
+│   └── etl_scheduler.py        # Scheduler background
+├── sql/
+│   ├── 01_schemas.sql          # Criacao dos schemas
+│   ├── 02_raw_tables.sql       # Tabelas raw
+│   ├── 03_views.sql            # Views analiticas
+│   ├── 04_contratos.sql        # Tabela de contratos
+│   ├── 05_views_semana34.sql   # Views adicionais
+│   ├── 06_star_schema.sql      # Star schema (dims + facts)
+│   ├── 07_inteligencia.sql     # Tabelas de ML
+│   ├── 08_refactoring_v2.sql   # Refactoring organizacoes
+│   ├── 09_filtros_consumo.sql  # Views com filtro de tickets
+│   └── 10_contratos_iniciais.sql # Contratos iniciais
+└── docs/
+    └── documentacao.html        # Esta documentacao</code></pre>
+
+<br><br>
+<p style="text-align:center;color:var(--text-muted);font-size:13px;border-top:1px solid var(--border);padding-top:20px;">
+    Movidesk BI &mdash; Documentacao gerada em Abril/2026
+</p>
+
+</div>
+</body>
+</html>

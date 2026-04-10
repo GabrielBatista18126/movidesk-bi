@@ -270,3 +270,21 @@ def analistas_disponiveis_mes() -> list:
         ORDER BY 1
     """)
     return df["analista"].tolist() if not df.empty else []
+
+
+def lancamentos_detalhados_mes() -> pd.DataFrame:
+    """Lancamentos individuais do mes atual com descricao da acao."""
+    return query("""
+        SELECT
+            te.entry_date::date                                       AS data,
+            COALESCE(a.business_name, te.agent_name, 'Sem agente')    AS analista,
+            COALESCE(te.organization_name, te.client_name, '')        AS cliente,
+            '#' || te.ticket_id                                       AS ticket,
+            ROUND(te.hours_spent::numeric, 1)                         AS horas,
+            COALESCE(te.description, '')                              AS descricao
+        FROM raw.time_entries te
+        LEFT JOIN raw.agentes a ON a.id = te.agent_id
+        WHERE DATE_TRUNC('month', te.entry_date) = DATE_TRUNC('month', CURRENT_DATE)
+          AND te.hours_spent > 0
+        ORDER BY te.entry_date::date, te.ticket_id
+    """)

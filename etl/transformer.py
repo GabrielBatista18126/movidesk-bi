@@ -282,6 +282,13 @@ def transform_tickets(tickets: list[dict]) -> tuple[list[TicketRecord], list[Tim
                 if not entry_date:
                     entry_date = datetime.now(timezone.utc)
 
+                # Texto da ação: usa action.description (texto real),
+                # fallback para activity/workTypeName
+                action_desc = _safe_str(action.get("description"), 500)
+                entry_desc = action_desc or _safe_str(
+                    appt.get("activity") or appt.get("workTypeName"), 500
+                )
+
                 time_entry_records.append(TimeEntryRecord(
                     id                = str(appt_id),
                     ticket_id         = tid,
@@ -294,9 +301,7 @@ def transform_tickets(tickets: list[dict]) -> tuple[list[TicketRecord], list[Tim
                     client_name       = org_name or requester_name,
                     hours_spent       = hours,
                     entry_date        = entry_date,
-                    description       = _safe_str(
-                        appt.get("activity") or appt.get("workTypeName"), 500
-                    ),
+                    description       = entry_desc,
                 ))
 
     if skipped:

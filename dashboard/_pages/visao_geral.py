@@ -39,14 +39,26 @@ def render():
     datas_disp = sorted(horas_dia_raw["data"].unique().tolist()) if not horas_dia_raw.empty else []
     analistas_disp = sorted(horas_dia_raw["analista"].unique().tolist()) if not horas_dia_raw.empty else []
 
+    # Carrega lancamentos detalhados
+    lancamentos_raw = db.lancamentos_detalhados_mes()
+
     with st.container():
-        fc1, fc2 = st.columns([1, 1])
+        fc1, fc2, fc3 = st.columns([1, 1, 1])
         with fc1:
             opcoes_data = ["Todos os dias"] + [str(d) for d in datas_disp]
             opcao_data = st.selectbox("Data:", opcoes_data, key="filtro_data")
         with fc2:
             opcoes_analista = ["Todos os analistas"] + analistas_disp
             opcao_analista = st.selectbox("Analista:", opcoes_analista, key="filtro_analista")
+        with fc3:
+            # Contador de registros filtrados
+            _lc = lancamentos_raw.copy() if not lancamentos_raw.empty else pd.DataFrame()
+            if not _lc.empty and opcao_analista != "Todos os analistas":
+                _lc = _lc[_lc["analista"] == opcao_analista]
+            if not _lc.empty and opcao_data != "Todos os dias":
+                _lc = _lc[_lc["data"].astype(str) == opcao_data]
+            st.markdown(f"<br><span style='color:#888'>{len(_lc)} registro(s)</span>",
+                        unsafe_allow_html=True)
 
     # ── Aplica filtros ──────────────────────────────────────────
     horas_dia = horas_dia_raw.copy()
@@ -277,3 +289,34 @@ def render():
                 unsafe_allow_html=True,
             )
             c5.progress(min(row["barra"], 1.0))
+
+    # ── Lançamentos detalhados ──────────────────────────────────
+    if filtro_analista_ativo and not lancamentos_raw.empty:
+        st.markdown("---")
+        lancamentos = lancamentos_raw[lancamentos_raw["analista"] == opcao_analista].copy()
+        if filtro_data_ativo:
+            lancamentos = lancamentos[lancamentos["data"].astype(str) == opcao_data]
+
+        st.subheader("Lançamentos detalhados")
+        st.caption(opcao_analista)
+
+        if not lancamentos.empty:
+            df_show = lancamentos.rename(columns={
+                "data": "Data",
+                "analista": "Analista",
+                "cliente": "Cliente",
+                "ticket": "Ticket",
+                "horas": "Horas",
+                "descricao": "Descrição da ação",
+            })
+            df_show["Data"] = df_show["Data"].astype(str)
+            df_show["Horas"] = df_show["Horas"].apply(lambda h: f"{h:.1f}h")
+
+            st.dataframe(
+                df_show[["Data", "Analista", "Cliente", "Ticket", "Horas", "Descrição da ação"]],
+                width="stretch",
+                hide_index=True,
+                height=min(700, 40 + len(df_show) * 35),
+            )
+        else:
+            st.info("Nenhum lançamento encontrado para este filtro.")

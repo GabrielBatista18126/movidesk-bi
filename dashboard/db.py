@@ -214,9 +214,9 @@ def tipo_problema_mes() -> pd.DataFrame:
     """Distribuição por categoria+tipo (tipo de problema) no mês atual."""
     return query("""
         SELECT
-            COALESCE(t.category, 'Sem categoria')
+            COALESCE(NULLIF(t.category, ''), 'Sem categoria')
                 || ' - '
-                || COALESCE(NULLIF(te.description, ''), 'Sem descrição') AS tipo,
+                || COALESCE(NULLIF(t.ticket_type, ''), 'Sem tipo') AS tipo,
             ROUND(SUM(te.hours_spent)::numeric, 1) AS horas,
             COUNT(*) AS qtd
         FROM raw.time_entries te

@@ -40,6 +40,13 @@ armazena em um banco PostgreSQL local e expõe via views e star schema para o Po
 - Calcula score de risco por cliente baseado em histórico e tendência
 - Sugere upgrades de plano para clientes com padrão de estouro
 - Alimenta dashboards no Power BI com dados atualizados 3 vezes ao dia
+- **Mede SLA** (TTFR/TTR) por ticket, cliente, categoria e analista
+- **Matriz de produtividade** por analista: heatmap semanal, especialistas, carga vs capacidade
+- **Módulo de contratos** com CRUD via Streamlit (rollover, ciclos, hora extra)
+- **Análise de retrabalho**: tickets reabertos, problemas recorrentes, clusters TF-IDF
+- **ML avançado**: anomalias de consumo (Z-score) e previsão de tickets 7d com sazonalidade
+- **Digest diário 08:00** por e-mail e observabilidade do próprio ETL
+- **Personas** (Gestor / Analista) com filas individuais por analista
 
 ---
 
@@ -442,6 +449,36 @@ Todos os tickets ainda ativos com tempo decorrido, urgência e responsável.
 - Previsão de consumo até o fim do mês
 - Score de risco 0–100 por cliente
 - Sugestões de upgrade de plano
+- **Anomalias de consumo** detectadas por Z-score (>1.8σ acima da média)
+- **Previsão de tickets** próximos 7 dias com sazonalidade semanal
+
+### Dashboard 6 — SLA (`📏 SLA`)
+- KPIs: % SLA OK, TTFR médio (tempo de primeira resposta), TTR médio (resolução)
+- Tabela de tickets em risco (faltam < 24h para o SLA solution)
+- Série temporal de % cumprido por dia
+- Ranking pior/melhor cliente e categoria
+
+### Dashboard 7 — Contratos (`📄 Contratos`)
+- Aba **Saldo** — saldo atual considerando rollover e dia de corte
+- Aba **Lista** — editar / encerrar contratos via formulário
+- Aba **Novo** — cadastrar novo contrato (tipo, dia de corte, hora extra)
+
+### Dashboard 8 — Retrabalho (`🔁 Retrabalho`)
+- Tickets reabertos (com dias após resolução)
+- Top problemas recorrentes (cliente × categoria, 90d)
+- Clusters de descrições de ações (TF-IDF + KMeans)
+- Assuntos mais repetidos
+
+### Dashboard 9 — Monitor ETL (`⚙️ Monitor ETL`)
+- Health check (alerta se ETL parado > 15 min ou última falhou)
+- Taxa de sucesso das últimas 50 execuções
+- Histórico de duração e status
+
+### Visão Analista (`🧑‍💻 Minha fila`)
+Ativada pelo toggle de persona no topo do sidebar. Mostra apenas:
+- KPIs pessoais (horas 7d / 30d, tickets atendidos, em aberto)
+- Fila de tickets atribuídos com badge de SLA restante
+- Lançamentos pessoais dos últimos 30 dias
 
 ---
 
@@ -488,7 +525,7 @@ A view `analytics.v_sugestoes_upgrade` lista clientes candidatos a upgrade com:
 
 ## 13. Alertas por e-mail
 
-O sistema envia e-mails automaticamente em 3 situações:
+O sistema envia e-mails automaticamente em 4 situações:
 
 ### Alerta de consumo atual (dispara a cada execução do ETL)
 Clientes que atingiram o limiar crítico (padrão: 80%) no mês corrente.
@@ -500,6 +537,15 @@ antes do fim do mês. Permite ação preventiva.
 
 ### Alerta de falha do ETL
 Enviado quando o pipeline falha em qualquer etapa, com o traceback do erro.
+
+### Digest diário (08:00 todo dia)
+Resumo enviado pelo `scripts/etl_scheduler.py` automaticamente às 8h:
+horas lançadas ontem, tickets novos/resolvidos, top 5 SLA em risco,
+clientes próximos do estouro e anomalias detectadas. Para gerar manualmente:
+
+```powershell
+python scripts/daily_digest.py
+```
 
 **Configuração dos destinatários no `.env`:**
 ```env
@@ -537,12 +583,27 @@ movidesk-bi/
 │   ├── 04_contratos.sql        ← tabela de contratos
 │   ├── 05_views_semana34.sql   ← views de alertas e produtividade
 │   ├── 06_star_schema.sql      ← dim_* e fact_* para o BI
-│   └── 07_inteligencia.sql     ← tabelas de previsões e scores
+│   ├── 07_inteligencia.sql    ← tabelas de previsões e scores
+│   ├── 11_sla.sql             ← campos e views de SLA (TTFR/TTR)
+│   ├── 12_contratos_v2.sql    ← contratos com ciclo, rollover, hora extra
+│   ├── 13_retrabalho.sql      ← reabertos, recorrentes, subjects (pg_trgm)
+│   └── 14_ml_avancado.sql     ← anomalias_consumo + previsoes_tickets_7d
 │
 ├── scripts/                    ← automação
 │   ├── run_etl.bat             ← script chamado pelo agendador
 │   ├── agendar_etl.ps1         ← registra tarefa no Task Scheduler
+│   ├── etl_scheduler.py        ← scheduler em background + digest 08:00
+│   ├── daily_digest.py         ← digest HTML diário do gestor
 │   └── logs/                   ← logs diários (gerado automaticamente)
+│
+├── dashboard/                  ← Streamlit app
+│   ├── app.py                  ← entrypoint + sidebar + persona toggle
+│   ├── db.py                   ← queries com cache
+│   └── _pages/                 ← uma página por funcionalidade
+│       ├── visao_geral.py | sla.py | consumo.py | contratos.py
+│       ├── alertas.py | produtividade.py | retrabalho.py
+│       ├── tickets.py | inteligencia.py | etl_monitor.py
+│       └── minha_fila.py       ← visão analista (persona)
 │
 ├── powerbi/
 │   └── conexao_powerbi.md      ← guia de conexão Power BI ↔ PostgreSQL

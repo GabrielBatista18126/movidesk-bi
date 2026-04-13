@@ -1,7 +1,7 @@
 # Dicionário de Dados — Movidesk BI
 
-**Última atualização:** 2026-03-31  
-**Banco de dados:** PostgreSQL 15  
+**Última atualização:** 2026-04-13
+**Banco de dados:** PostgreSQL 15
 **Schemas:** `raw` (dados brutos) | `analytics` (star schema + views)
 
 ---
@@ -59,6 +59,14 @@ Tickets de suporte importados do Movidesk.
 | `closed_date` | TIMESTAMPTZ | Data de fechamento (NULL se não fechado) |
 | `last_update` | TIMESTAMPTZ | Última modificação no Movidesk |
 | `time_spent_total_hours` | NUMERIC(10,4) | Soma de todas as horas lançadas no ticket |
+| `organization_id` | VARCHAR(50) | Organização do solicitante |
+| `organization_name` | VARCHAR(255) | Nome da organização (denormalizado) |
+| `requester_id` | VARCHAR(50) | ID do solicitante |
+| `requester_name` | VARCHAR(255) | Nome do solicitante |
+| `first_action_date` | TIMESTAMPTZ | **Primeira ação de agente** (origin ≠ 0). Base do TTFR |
+| `sla_response_date` | TIMESTAMPTZ | Prazo SLA de primeira resposta (Movidesk) |
+| `sla_solution_date` | TIMESTAMPTZ | Prazo SLA de solução (Movidesk) |
+| `reopened_date` | TIMESTAMPTZ | Quando o ticket foi reaberto (NULL se nunca) |
 | `created_at` | TIMESTAMPTZ | Data de ingestão |
 | `updated_at` | TIMESTAMPTZ | Data da última atualização |
 
@@ -208,7 +216,7 @@ Um registro por ticket. Grain: ticket.
 ### Tabelas de referência
 
 #### `analytics.contratos`
-Contratos de horas mensais por cliente — **mantida manualmente**.
+Contratos de horas mensais por cliente — gerenciado pela página `📄 Contratos` do dashboard.
 
 | Coluna | Tipo | Descrição |
 |---|---|---|
@@ -221,6 +229,84 @@ Contratos de horas mensais por cliente — **mantida manualmente**.
 | `vigencia_fim` | DATE | Fim da vigência (NULL = sem prazo) |
 | `valor_mensal` | NUMERIC(10,2) | Valor do contrato (opcional) |
 | `observacoes` | TEXT | Notas adicionais |
+| `tipo_contrato` | VARCHAR(30) | `mensal_fixo` \| `banco_horas_mensal` \| `banco_horas_trimestral` |
+| `rollover_horas` | BOOLEAN | Se `true`, horas não usadas acumulam pro próximo ciclo |
+| `hora_extra_valor` | NUMERIC(10,2) | Valor cobrado por hora excedente |
+| `dia_corte` | SMALLINT | Dia do mês em que o ciclo reinicia (1–28) |
+| `ativo` | BOOLEAN | Contrato ativo (false = encerrado) |
+
+---
+
+#### `analytics.previsoes_consumo`
+Previsão de horas até o fim do mês por cliente (gerada pelo `etl/ml.py`).
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `client_id` | VARCHAR(50) PK | Cliente |
+| `client_name` | VARCHAR(255) | Nome (denormalizado) |
+| `mes_referencia` | CHAR(7) PK | "YYYY-MM" |
+| `horas_ate_agora` | NUMERIC(8,2) | Consumo real até hoje |
+| `horas_previstas_fim` | NUMERIC(8,2) | Projeção até o último dia do mês |
+| `horas_contratadas` | NUMERIC(8,2) | Limite do contrato |
+| `pct_previsto` | NUMERIC(6,2) | % em relação ao contrato |
+| `vai_estourar` | BOOLEAN | Projeção ultrapassa o contrato |
+| `dias_ate_fim_mes` | INTEGER | Dias restantes |
+| `metodo` | VARCHAR(30) | Método (atualmente `linear`) |
+| `gerado_em` | TIMESTAMPTZ | Quando foi calculado |
+
+---
+
+#### `analytics.score_clientes`
+Score de risco 0–100 por cliente (gerado pelo `etl/ml.py`).
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `client_id` | VARCHAR(50) PK | Cliente |
+| `client_name` | VARCHAR(255) | Nome |
+| `score_total` | NUMERIC(5,1) | Score 0–100 |
+| `classificacao` | VARCHAR(10) | `BAIXO` \| `MEDIO` \| `ALTO` \| `CRITICO` |
+| `score_historico_estouro` | NUMERIC(5,1) | Componente: meses estourados / total (peso 40%) |
+| `score_tendencia` | NUMERIC(5,1) | Componente: regressão linear sobre consumo (peso 30%) |
+| `score_volatilidade` | NUMERIC(5,1) | Componente: desvio padrão do consumo (peso 20%) |
+| `score_urgencia_tickets` | NUMERIC(5,1) | Componente: % tickets High/Urgent (peso 10%) |
+| `meses_analisados` | INTEGER | Quantos meses entraram no cálculo |
+| `meses_estourados` | INTEGER | Quantos desses estouraram |
+| `media_consumo_pct` | NUMERIC(6,1) | Média % de consumo no período |
+| `tendencia_pct_mes` | NUMERIC(6,2) | Inclinação (%/mês) |
+| `gerado_em` | TIMESTAMPTZ | Quando foi calculado |
+
+---
+
+#### `analytics.anomalias_consumo`
+Clientes com consumo acima da média histórica (Z-score). Atualizado pelo `etl/ml.py`.
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `id` | SERIAL PK | — |
+| `client_id` | VARCHAR(50) | Cliente |
+| `client_name` | VARCHAR(255) | Nome |
+| `data_detectada` | DATE | Quando a anomalia foi detectada |
+| `horas_periodo` | NUMERIC(8,2) | Horas na janela analisada (default 7 dias) |
+| `media_historica` | NUMERIC(8,2) | Média das janelas anteriores (até 90 dias atrás) |
+| `desvio_padrao` | NUMERIC(8,2) | Desvio padrão do histórico |
+| `z_score` | NUMERIC(6,2) | (atual - média) / desvio |
+| `severidade` | VARCHAR(20) | `MEDIO` (z≥1.8) \| `ALTO` (z≥2.5) \| `CRITICO` (z≥3.5) |
+| `gerado_em` | TIMESTAMPTZ | — |
+
+UNIQUE (`client_id`, `data_detectada`).
+
+---
+
+#### `analytics.previsoes_tickets_7d`
+Previsão de volume de tickets para os próximos 7 dias (sazonalidade semanal + tendência).
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `data_prevista` | DATE PK | Dia no futuro |
+| `tickets_previstos` | NUMERIC(8,2) | Volume previsto |
+| `media_30d` | NUMERIC(8,2) | Média diária dos últimos 30 dias |
+| `tendencia_pct` | NUMERIC(6,2) | Tendência % calculada por regressão linear |
+| `gerado_em` | TIMESTAMPTZ | — |
 
 ---
 
@@ -238,3 +324,12 @@ Contratos de horas mensais por cliente — **mantida manualmente**.
 | `analytics.v_historico_consumo` | Série histórica consumo vs. contrato | Automática |
 | `analytics.v_produtividade_detalhada` | Produtividade por agente com % do time | Automática |
 | `analytics.v_top_tickets_mes` | Tickets que mais consumiram horas | Automática |
+| `analytics.v_sla_tickets` | TTFR/TTR + flags `dentro_sla_response/solution` por ticket | Automática |
+| `analytics.v_sla_kpis_mes` | % SLA OK, TTFR médio, TTR médio do mês | Automática |
+| `analytics.v_sla_por_cliente` | Cumprimento de SLA agregado por cliente | Automática |
+| `analytics.v_sla_por_categoria` | Cumprimento de SLA agregado por categoria | Automática |
+| `analytics.v_tickets_risco_sla` | Tickets em aberto a < 24h de estourar SLA | Automática |
+| `analytics.v_saldo_contrato` | Saldo do ciclo atual considerando rollover e dia de corte | Automática |
+| `analytics.v_tickets_reabertos` | Tickets com `reopened_date` preenchido + dias após resolução | Automática |
+| `analytics.v_problemas_recorrentes` | Cliente × categoria com ≥3 ocorrências em 90d | Automática |
+| `analytics.v_subjects_frequentes` | Top 50 assuntos normalizados que se repetem | Automática |

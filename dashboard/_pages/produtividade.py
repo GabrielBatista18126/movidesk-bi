@@ -1,8 +1,13 @@
 """Página: Produtividade do Time."""
 import plotly.express as px
+import plotly.graph_objects as go
+import pandas as pd
 import streamlit as st
 
 from dashboard import db
+
+
+_DIAS_SEMANA = {1: "Seg", 2: "Ter", 3: "Qua", 4: "Qui", 5: "Sex", 6: "Sáb", 7: "Dom"}
 
 
 def render():
@@ -136,3 +141,102 @@ def render():
                 legend=dict(orientation="h", yanchor="bottom", y=-0.45),
             )
             st.plotly_chart(fig4, width="stretch")
+
+    # ════════════════════════════════════════════════════════════
+    # Matriz avançada de produtividade (Fase 2)
+    # ════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.header("🔬 Análise avançada")
+
+    # ── Heatmap: analista × dia da semana ──────────────────────────
+    st.subheader("🗓️ Heatmap — Horas por analista × dia da semana (mês atual)")
+    heat = db.matriz_produtividade_semana()
+    if heat.empty:
+        st.caption("Sem dados no mês.")
+    else:
+        heat["dia_nome"] = heat["dia_semana"].map(_DIAS_SEMANA)
+        pivot = heat.pivot(index="analista", columns="dia_nome", values="horas").fillna(0)
+        ordem = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+        pivot = pivot[[c for c in ordem if c in pivot.columns]]
+        pivot = pivot.loc[pivot.sum(axis=1).sort_values(ascending=False).index]
+        fig_h = go.Figure(data=go.Heatmap(
+            z=pivot.values,
+            x=pivot.columns.tolist(),
+            y=pivot.index.tolist(),
+            colorscale="Blues",
+            text=pivot.values,
+            texttemplate="%{text:.1f}",
+            hovertemplate="%{y} · %{x}<br>%{z:.1f} horas<extra></extra>",
+        ))
+        fig_h.update_layout(
+            height=max(300, len(pivot) * 30),
+            margin=dict(l=0, r=0, t=10, b=0),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_h, width="stretch")
+
+    # ── Carga vs capacidade ────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("⚖️ Carga vs capacidade (8h × dias úteis do mês)")
+    carga = db.carga_vs_capacidade()
+    if carga.empty:
+        st.caption("Sem dados.")
+    else:
+        df_c = carga.copy()
+        df_c["Utilização"] = df_c["pct_utilizacao"].apply(
+            lambda v: f"{v:.1f}%" if pd.notna(v) else "—"
+        )
+        df_c["Status"] = df_c["pct_utilizacao"].apply(
+            lambda v: "🔴 Sobrecarregado" if pd.notna(v) and v > 100
+            else "🟡 Alta"   if pd.notna(v) and v >= 85
+            else "🟢 Normal" if pd.notna(v) and v >= 50
+            else "⚪ Ocioso"
+        )
+        st.dataframe(
+            df_c.rename(columns={
+                "analista": "Analista",
+                "horas_lancadas": "Horas lançadas",
+                "tickets": "Tickets",
+                "capacidade_horas": "Capacidade (h)",
+            })[["Analista", "Horas lançadas", "Tickets",
+                "Capacidade (h)", "Utilização", "Status"]],
+            width="stretch", hide_index=True,
+            height=min(500, 40 + len(df_c) * 35),
+        )
+
+    # ── Especialistas por categoria ────────────────────────────────
+    st.markdown("---")
+    col_e1, col_e2 = st.columns(2)
+    with col_e1:
+        st.subheader("🎯 Especialista por categoria (90d)")
+        esp = db.especialista_por_categoria()
+        if esp.empty:
+            st.caption("Sem dados.")
+        else:
+            st.dataframe(
+                esp.rename(columns={
+                    "categoria": "Categoria", "analista": "Especialista",
+                    "horas": "Horas", "tickets": "Tickets",
+                }),
+                width="stretch", hide_index=True,
+                height=min(500, 40 + len(esp) * 35),
+            )
+
+    with col_e2:
+        st.subheader("⏱️ Ticket médio por categoria (90d)")
+        tmc = db.ticket_medio_por_categoria()
+        if tmc.empty:
+            st.caption("Sem dados.")
+        else:
+            df_tmc = tmc.copy()
+            df_tmc["h/ticket"] = df_tmc["horas_por_ticket"].apply(
+                lambda v: f"{v:.2f}h" if pd.notna(v) else "—"
+            )
+            st.dataframe(
+                df_tmc.rename(columns={
+                    "categoria": "Categoria", "tickets": "Tickets",
+                    "horas_totais": "Horas totais",
+                })[["Categoria", "Tickets", "Horas totais", "h/ticket"]],
+                width="stretch", hide_index=True,
+                height=min(500, 40 + len(df_tmc) * 35),
+            )

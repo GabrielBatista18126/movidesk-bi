@@ -352,6 +352,208 @@ def alert_previsoes_estouro(previsoes_rows: list) -> None:
     _send_email(subject, body)
 
 
+# ─── Detecção de anomalias de consumo ─────────────────────────────
+
+def calcular_anomalias_consumo(janela_dias: int = 7, lookback_dias: int = 90) -> int:
+    """
+    Detecta clientes com consumo anômalo na última janela (default 7d) comparado
+    ao histórico de janelas anteriores. Usa Z-score: (atual - média) / desvio.
+
+    Severidade:
+      |z| >= 3.5  → CRITICO
+      |z| >= 2.5  → ALTO
+      |z| >= 1.8  → MEDIO
+
+    Apenas anomalias positivas (consumo acima do normal) são gravadas.
+    """
+    sql = f"""
+        WITH janelas AS (
+            SELECT
+                te.client_id,
+                COALESCE(MAX(t.organization_name), te.client_id) AS client_name,
+                DATE_TRUNC('day', te.entry_date)::date           AS dia,
+                te.hours_spent
+            FROM raw.time_entries te
+            LEFT JOIN raw.tickets t ON t.id = te.ticket_id
+            WHERE te.entry_date >= CURRENT_DATE - INTERVAL '{lookback_dias} days'
+              AND te.client_id IS NOT NULL
+            GROUP BY te.client_id, te.entry_date, te.hours_spent
+        ),
+        agregado AS (
+            SELECT
+                client_id,
+                MAX(client_name) AS client_name,
+                FLOOR((CURRENT_DATE - dia)::int / {janela_dias}) AS bucket,
+                SUM(hours_spent)::numeric AS horas_periodo
+            FROM janelas
+            GROUP BY client_id, bucket
+        )
+        SELECT client_id, client_name, bucket, horas_periodo
+        FROM agregado
+        ORDER BY client_id, bucket
+    """
+
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+
+    if not rows:
+        logger.info("Anomalias: sem dados para analisar.")
+        return 0
+
+    from collections import defaultdict
+    por_cliente: dict = defaultdict(list)
+    nome_cliente: dict = {}
+    for client_id, client_name, bucket, horas in rows:
+        por_cliente[client_id].append((int(bucket), float(horas or 0)))
+        nome_cliente[client_id] = client_name
+
+    anomalias = []
+    hoje = date.today()
+    for client_id, pontos in por_cliente.items():
+        if len(pontos) < 4:
+            continue
+        pontos.sort()
+        # bucket 0 = janela mais recente; histórico = buckets >= 1
+        atual = next((h for b, h in pontos if b == 0), None)
+        historico = [h for b, h in pontos if b >= 1]
+        if atual is None or len(historico) < 3:
+            continue
+
+        media = float(np.mean(historico))
+        desvio = float(np.std(historico))
+        if desvio < 0.5:
+            continue
+        z = (atual - media) / desvio
+        if z < 1.8:
+            continue
+
+        if z >= 3.5:
+            sev = "CRITICO"
+        elif z >= 2.5:
+            sev = "ALTO"
+        else:
+            sev = "MEDIO"
+
+        anomalias.append((
+            client_id, nome_cliente.get(client_id, client_id), hoje,
+            round(atual, 2), round(media, 2), round(desvio, 2),
+            round(z, 2), sev, datetime.now(timezone.utc),
+        ))
+
+    if not anomalias:
+        logger.info("Anomalias: nenhum cliente com z-score significativo.")
+        return 0
+
+    sql_upsert = """
+        INSERT INTO analytics.anomalias_consumo (
+            client_id, client_name, data_detectada,
+            horas_periodo, media_historica, desvio_padrao,
+            z_score, severidade, gerado_em
+        ) VALUES %s
+        ON CONFLICT (client_id, data_detectada) DO UPDATE SET
+            client_name     = EXCLUDED.client_name,
+            horas_periodo   = EXCLUDED.horas_periodo,
+            media_historica = EXCLUDED.media_historica,
+            desvio_padrao   = EXCLUDED.desvio_padrao,
+            z_score         = EXCLUDED.z_score,
+            severidade      = EXCLUDED.severidade,
+            gerado_em       = EXCLUDED.gerado_em
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            execute_values(cur, sql_upsert, anomalias)
+        conn.commit()
+
+    logger.info("Anomalias: %d cliente(s) com consumo anômalo detectado.", len(anomalias))
+    return len(anomalias)
+
+
+# ─── Previsão de volume de tickets (próximos 7 dias) ──────────────
+
+def calcular_previsoes_tickets(historico_dias: int = 60) -> int:
+    """
+    Prevê volume de tickets/dia para os próximos 7 dias usando combinação de:
+      - média móvel dos últimos 30 dias
+      - sazonalidade semanal (média por dia da semana nos últimos `historico_dias`)
+      - tendência linear
+
+    Grava em analytics.previsoes_tickets_7d.
+    """
+    sql = f"""
+        SELECT
+            DATE(t.created_date) AS dia,
+            COUNT(*)             AS qtd
+        FROM raw.tickets t
+        WHERE t.created_date >= CURRENT_DATE - INTERVAL '{historico_dias} days'
+        GROUP BY dia
+        ORDER BY dia
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+
+    if len(rows) < 14:
+        logger.info("Previsão tickets: histórico insuficiente (%d dias).", len(rows))
+        return 0
+
+    dias = [r[0] for r in rows]
+    qtds = np.array([float(r[1]) for r in rows])
+
+    # Sazonalidade semanal: média por dia da semana
+    sazon: dict[int, list[float]] = {i: [] for i in range(7)}
+    for d, q in zip(dias, qtds):
+        sazon[d.weekday()].append(float(q))
+    media_dow = {dow: (np.mean(v) if v else float(np.mean(qtds))) for dow, v in sazon.items()}
+
+    # Média 30d
+    media_30d = float(np.mean(qtds[-30:])) if len(qtds) >= 30 else float(np.mean(qtds))
+    media_geral = float(np.mean(qtds))
+
+    # Tendência: regressão linear sobre últimos 30 dias
+    n_recente = min(30, len(qtds))
+    x = np.arange(n_recente, dtype=float)
+    coef = float(np.polyfit(x, qtds[-n_recente:], 1)[0])  # tickets/dia/dia
+    tendencia_pct = round((coef / media_30d * 100) if media_30d > 0 else 0, 2)
+
+    from datetime import timedelta
+    rows_out = []
+    for i in range(1, 8):
+        d_prev = date.today() + timedelta(days=i)
+        sazon_factor = float(media_dow[d_prev.weekday()]) / media_geral if media_geral > 0 else 1.0
+        previsto = float(media_30d) * float(sazon_factor) + (float(coef) * i)
+        previsto = max(0.0, previsto)
+        rows_out.append((
+            d_prev, round(float(previsto), 2), round(float(media_30d), 2),
+            float(tendencia_pct), datetime.now(timezone.utc),
+        ))
+
+    sql_upsert = """
+        INSERT INTO analytics.previsoes_tickets_7d (
+            data_prevista, tickets_previstos, media_30d,
+            tendencia_pct, gerado_em
+        ) VALUES %s
+        ON CONFLICT (data_prevista) DO UPDATE SET
+            tickets_previstos = EXCLUDED.tickets_previstos,
+            media_30d         = EXCLUDED.media_30d,
+            tendencia_pct     = EXCLUDED.tendencia_pct,
+            gerado_em         = EXCLUDED.gerado_em
+    """
+    with _get_conn() as conn:
+        with conn.cursor() as cur:
+            execute_values(cur, sql_upsert, rows_out)
+        conn.commit()
+
+    total_prev = sum(r[1] for r in rows_out)
+    logger.info(
+        "Previsão tickets: %d dias projetados | total=%.1f | tendência=%.1f%%",
+        len(rows_out), total_prev, tendencia_pct,
+    )
+    return len(rows_out)
+
+
 # ─── Orquestrador ─────────────────────────────────────────────────
 
 def run_ml() -> int:
@@ -363,6 +565,8 @@ def run_ml() -> int:
 
     n_prev  = calcular_previsoes()
     n_score = calcular_scores()
+    n_anom  = calcular_anomalias_consumo()
+    n_tick  = calcular_previsoes_tickets()
 
     # Dispara alerta preditivo para clientes que vão estourar mas ainda não estouraram
     sql_alerta = """
@@ -390,6 +594,9 @@ def run_ml() -> int:
         )
         alert_previsoes_estouro(previsoes_alerta)
 
-    total = n_prev + n_score
-    logger.info("── ML: concluído | previsões=%d | scores=%d ──", n_prev, n_score)
+    total = n_prev + n_score + n_anom + n_tick
+    logger.info(
+        "── ML: concluído | previsões=%d | scores=%d | anomalias=%d | tickets7d=%d ──",
+        n_prev, n_score, n_anom, n_tick,
+    )
     return total

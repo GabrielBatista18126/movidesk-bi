@@ -150,9 +150,14 @@ def fetch_tickets(session: requests.Session, since: Optional[datetime] = None) -
         "$select": (
             "id,subject,status,type,category,urgency,"
             "createdDate,lastUpdate,resolvedIn,closedIn,"
-            "ownerTeam,actionCount"
+            "ownerTeam,actionCount,"
+            "slaResponseDate,slaSolutionDate,reopenedIn"
         ),
-        "$expand": "clients($expand=organization),owner,actions($expand=timeAppointments,createdBy)",
+        "$expand": (
+            "clients($expand=organization),"
+            "owner,"
+            "actions($expand=timeAppointments,createdBy;$select=id,type,origin,createdDate,description,timeAppointments,createdBy)"
+        ),
         "$filter": odata_filter,
         "$orderby": "lastUpdate asc",
     }

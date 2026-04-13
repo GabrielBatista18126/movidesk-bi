@@ -1,4 +1,5 @@
 """Página: Inteligência — Previsões, Scores e Sugestões de Upgrade."""
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
@@ -190,3 +191,82 @@ def render():
                 )
     else:
         st.info("Nenhuma sugestão de upgrade no momento. Todos os clientes estão dentro do esperado.")
+
+    st.markdown("---")
+
+    # ════════════════════════════════════════════════════════════
+    # ANOMALIAS DE CONSUMO (Z-SCORE)
+    # ════════════════════════════════════════════════════════════
+    st.subheader("🚨 Anomalias de consumo detectadas")
+    st.caption("Clientes com consumo significativamente acima da média histórica (Z-score ≥ 1.8)")
+
+    anomalias = db.anomalias_recentes()
+    if anomalias.empty:
+        st.success("Nenhuma anomalia de consumo detectada na última semana.")
+    else:
+        df = anomalias.copy()
+        df["Z-score"] = df["z_score"].apply(lambda v: f"{v:.2f}σ")
+        df["Período"] = df["horas_periodo"].apply(lambda v: f"{v:.1f}h")
+        df["Média histórica"] = df["media_historica"].apply(lambda v: f"{v:.1f}h")
+        df["Detectada em"] = df["data_detectada"].astype(str)
+
+        def _badge(s):
+            cls = {"CRITICO": "estourado", "ALTO": "critico", "MEDIO": "atencao"}.get(s, "normal")
+            return f'<span class="badge-{cls}">{s}</span>'
+
+        df["Severidade"] = df["severidade"].apply(_badge)
+        st.markdown(
+            df.rename(columns={"client_name": "Cliente"})[
+                ["Cliente", "Severidade", "Z-score", "Período",
+                 "Média histórica", "Detectada em"]
+            ].to_html(escape=False, index=False),
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+
+    # ════════════════════════════════════════════════════════════
+    # PREVISÃO DE VOLUME DE TICKETS (STAFFING)
+    # ════════════════════════════════════════════════════════════
+    st.subheader("📊 Previsão de tickets — próximos 7 dias")
+    st.caption("Sazonalidade semanal + tendência. Use para planejar staffing.")
+
+    prev_tk = db.previsoes_tickets_proximos()
+    if prev_tk.empty:
+        st.info("Sem previsão disponível. Histórico insuficiente.")
+    else:
+        total_7d = prev_tk["tickets_previstos"].sum()
+        media_30d = prev_tk["media_30d"].iloc[0] if not prev_tk.empty else 0
+        tendencia = prev_tk["tendencia_pct"].iloc[0] if not prev_tk.empty else 0
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("📥 Total previsto 7d", f"{total_7d:.0f}")
+        c2.metric("📅 Média diária 30d", f"{media_30d:.1f}")
+        c3.metric(
+            "📈 Tendência",
+            f"{tendencia:+.1f}%",
+            delta_color="inverse" if tendencia > 0 else "normal",
+        )
+
+        df_prev = prev_tk.copy()
+        df_prev["data_prevista"] = pd.to_datetime(df_prev["data_prevista"])
+        df_prev["dia_semana"] = df_prev["data_prevista"].dt.strftime("%a %d/%m")
+
+        fig_prev = px.bar(
+            df_prev,
+            x="dia_semana", y="tickets_previstos",
+            text="tickets_previstos",
+            labels={"dia_semana": "", "tickets_previstos": "Tickets"},
+            color="tickets_previstos", color_continuous_scale="Blues",
+        )
+        fig_prev.update_traces(texttemplate="%{text:.0f}", textposition="outside")
+        fig_prev.add_hline(
+            y=media_30d, line_dash="dot", line_color="#999",
+            annotation_text="Média 30d", annotation_position="right",
+        )
+        fig_prev.update_layout(
+            height=320, showlegend=False, coloraxis_showscale=False,
+            margin=dict(l=0, r=20, t=10, b=0),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_prev, width="stretch")

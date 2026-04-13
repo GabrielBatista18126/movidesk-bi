@@ -39,19 +39,35 @@ st.markdown("""
 with st.sidebar:
     st.image("https://i.imgur.com/placeholder.png", width=40) if False else None
     st.markdown("## 📊 Movidesk BI")
+
+    persona = st.radio(
+        "Persona",
+        options=["👔 Gestor", "🧑‍💻 Analista"],
+        horizontal=True,
+        key="persona_atual",
+        label_visibility="collapsed",
+    )
     st.markdown("---")
 
-    pagina = st.radio(
-        "Navegação",
-        options=[
+    if persona == "🧑‍💻 Analista":
+        opcoes = ["🧑‍💻 Minha fila"]
+    else:
+        opcoes = [
             "🏠 Visão Geral",
+            "📏 SLA",
             "📋 Consumo de Contrato",
+            "📄 Contratos",
             "🚨 Alertas",
             "👥 Produtividade",
+            "🔁 Retrabalho",
             "🎫 Tickets em Aberto",
             "🤖 Inteligência",
             "⚙️ Monitor ETL",
-        ],
+        ]
+
+    pagina = st.radio(
+        "Navegação",
+        options=opcoes,
         label_visibility="collapsed",
     )
     st.markdown("---")
@@ -67,6 +83,12 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
     st.caption("Auto-refresh a cada 5 min · Cache: 2 min")
+    st.markdown("<br>" * 3, unsafe_allow_html=True)
+    st.markdown(
+        "<div style='position:fixed;bottom:10px;left:16px;font-size:11px;"
+        "color:#666;'>Desenvolvido por Gabriel Furtado</div>",
+        unsafe_allow_html=True,
+    )
 
 # Auto-refresh a cada 5 minutos (300_000 ms)
 st_autorefresh(interval=300_000, limit=None, key="auto_refresh")
@@ -76,9 +98,17 @@ if pagina == "🏠 Visão Geral":
     from dashboard._pages import visao_geral
     visao_geral.render()
 
+elif pagina == "📏 SLA":
+    from dashboard._pages import sla
+    sla.render()
+
 elif pagina == "📋 Consumo de Contrato":
     from dashboard._pages import consumo
     consumo.render()
+
+elif pagina == "📄 Contratos":
+    from dashboard._pages import contratos
+    contratos.render()
 
 elif pagina == "🚨 Alertas":
     from dashboard._pages import alertas
@@ -87,6 +117,10 @@ elif pagina == "🚨 Alertas":
 elif pagina == "👥 Produtividade":
     from dashboard._pages import produtividade
     produtividade.render()
+
+elif pagina == "🔁 Retrabalho":
+    from dashboard._pages import retrabalho
+    retrabalho.render()
 
 elif pagina == "🎫 Tickets em Aberto":
     from dashboard._pages import tickets
@@ -99,3 +133,7 @@ elif pagina == "🤖 Inteligência":
 elif pagina == "⚙️ Monitor ETL":
     from dashboard._pages import etl_monitor
     etl_monitor.render()
+
+elif pagina == "🧑‍💻 Minha fila":
+    from dashboard._pages import minha_fila
+    minha_fila.render()

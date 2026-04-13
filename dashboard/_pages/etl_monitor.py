@@ -2,7 +2,9 @@
 from pathlib import Path
 import subprocess
 import sys
+from datetime import datetime, timezone
 
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 
@@ -23,13 +25,36 @@ def render():
         st.info("Nenhuma execução registrada ainda.")
         return
 
-    # ── KPIs ──────────────────────────────────────────────────────
+    # ── Health check ──────────────────────────────────────────────
     ultima = df.iloc[0]
-    k1, k2, k3, k4 = st.columns(4)
+    ultima_inicio = pd.to_datetime(ultima["started_at"], utc=True, errors="coerce")
+    agora = datetime.now(timezone.utc)
+    minutos_desde = (agora - ultima_inicio).total_seconds() / 60 if pd.notna(ultima_inicio) else None
+
+    if minutos_desde is None:
+        st.warning("⚠️ Não foi possível determinar quando o ETL rodou pela última vez.")
+    elif minutos_desde > 15:
+        st.error(
+            f"🔴 ETL parado há {minutos_desde:.0f} minutos. "
+            "Verifique o scheduler (`scripts/etl_scheduler.py`)."
+        )
+    elif ultima["status"] == "FAILURE":
+        st.error("🔴 Última execução falhou. Veja o log abaixo.")
+    else:
+        st.success(f"🟢 ETL saudável · última execução há {minutos_desde:.0f} min.")
+
+    # Taxa de sucesso (últimas 50)
+    df_50 = df.head(50)
+    sucessos = int((df_50["status"] == "SUCCESS").sum())
+    taxa_sucesso = sucessos / len(df_50) * 100 if len(df_50) else 0
+
+    # ── KPIs ──────────────────────────────────────────────────────
+    k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("🕐 Última execução",   str(ultima["started_at"])[:16])
     k2.metric("✅ Status",            ultima["status"])
     k3.metric("📦 Registros (última)", int(ultima["records_in"] or 0))
     k4.metric("⏱️ Duração (última)",  f"{int(ultima['duracao_segundos'] or 0)}s")
+    k5.metric("🎯 Taxa sucesso (50)", f"{taxa_sucesso:.0f}%")
 
     st.markdown("---")
 

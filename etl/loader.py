@@ -196,6 +196,7 @@ def upsert_tickets(records: list[TicketRecord]) -> int:
             organization_id, organization_name, requester_id, requester_name,
             client_id, owner_id, owner_team,
             created_date, resolved_date, closed_date, last_update,
+            first_action_date, sla_response_date, sla_solution_date, reopened_date,
             time_spent_total_hours, updated_at
         ) VALUES %s
         ON CONFLICT (id) DO UPDATE SET
@@ -208,6 +209,10 @@ def upsert_tickets(records: list[TicketRecord]) -> int:
             resolved_date          = EXCLUDED.resolved_date,
             closed_date            = EXCLUDED.closed_date,
             last_update            = EXCLUDED.last_update,
+            first_action_date      = EXCLUDED.first_action_date,
+            sla_response_date      = EXCLUDED.sla_response_date,
+            sla_solution_date      = EXCLUDED.sla_solution_date,
+            reopened_date          = EXCLUDED.reopened_date,
             time_spent_total_hours = EXCLUDED.time_spent_total_hours,
             updated_at             = NOW()
     """
@@ -218,6 +223,7 @@ def upsert_tickets(records: list[TicketRecord]) -> int:
             r.requester_id or None, r.requester_name,
             r.client_id or None, r.owner_id or None, r.owner_team,
             r.created_date, r.resolved_date, r.closed_date, r.last_update,
+            r.first_action_date, r.sla_response_date, r.sla_solution_date, r.reopened_date,
             r.time_spent_total_hours, r.ingested_at,
         )
         for r in records

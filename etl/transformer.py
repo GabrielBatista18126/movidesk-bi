@@ -122,6 +122,10 @@ class TicketRecord:
     resolved_date:          Optional[datetime]
     closed_date:            Optional[datetime]
     last_update:            Optional[datetime]
+    first_action_date:      Optional[datetime]
+    sla_response_date:      Optional[datetime]
+    sla_solution_date:      Optional[datetime]
+    reopened_date:          Optional[datetime]
     time_spent_total_hours: float
     ingested_at:            datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -239,9 +243,19 @@ def transform_tickets(tickets: list[dict]) -> tuple[list[TicketRecord], list[Tim
         compat_client_id     = org_id or requester_id
 
         total_hours = 0.0
+        first_agent_action: Optional[datetime] = None
         for action in (t.get("actions") or []):
             for appt in (action.get("timeAppointments") or []):
                 total_hours += _to_float(appt.get("accountedTime"))
+
+            # Primeira ação do agente (origin != 0 → não é o cliente)
+            # Movidesk origin codes: 0=Web (cliente/contato), 1=E-mail, 2=Agente via painel, 3=API, etc.
+            # Consideramos "resposta do agente" qualquer origin diferente de 0.
+            action_origin = action.get("origin")
+            action_dt = _parse_dt(action.get("createdDate"))
+            if action_dt and action_origin is not None and action_origin != 0:
+                if first_agent_action is None or action_dt < first_agent_action:
+                    first_agent_action = action_dt
 
         ticket_records.append(TicketRecord(
             id                    = tid,
@@ -261,6 +275,10 @@ def transform_tickets(tickets: list[dict]) -> tuple[list[TicketRecord], list[Tim
             resolved_date         = _parse_dt(t.get("resolvedIn")),
             closed_date           = _parse_dt(t.get("closedIn")),
             last_update           = _parse_dt(t.get("lastUpdate")),
+            first_action_date     = first_agent_action,
+            sla_response_date     = _parse_dt(t.get("slaResponseDate")),
+            sla_solution_date     = _parse_dt(t.get("slaSolutionDate")),
+            reopened_date         = _parse_dt(t.get("reopenedIn")),
             time_spent_total_hours= round(total_hours, 4),
         ))
 

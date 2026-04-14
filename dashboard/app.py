@@ -35,10 +35,44 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ── Gate de autenticação ──────────────────────────────────────────
+from dashboard import auth
+
+if "user" not in st.session_state or st.session_state["user"] is None:
+    from dashboard._pages import login
+    login.render()
+    st.stop()
+
+# Revalida usuário a cada execução (pega desativação em tempo real)
+_current_user = auth.get_user(st.session_state["user"]["email"])
+if not _current_user or not _current_user.get("is_ativo"):
+    st.session_state.pop("user", None)
+    st.warning("Sua sessão foi encerrada. Faça login novamente.")
+    st.stop()
+st.session_state["user"] = _current_user
+
 # ── Navegação ──────────────────────────────────────────────────────
 with st.sidebar:
     st.image("https://i.imgur.com/placeholder.png", width=40) if False else None
     st.markdown("## 📊 Movidesk BI")
+
+    # Bloco do usuário logado
+    _u = st.session_state["user"]
+    _nome = _u.get("nome") or _u["email"].split("@")[0]
+    _badge = "👑 admin" if _u.get("is_admin") else "usuário"
+    st.markdown(
+        f"<div style='background:#1e1e2e;padding:10px 12px;border-radius:8px;"
+        f"margin-bottom:8px;font-size:13px'>"
+        f"<strong>{_nome}</strong><br>"
+        f"<span style='color:#888;font-size:11px'>{_u['email']}</span><br>"
+        f"<span style='color:#7c3aed;font-size:11px'>{_badge}</span>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    if st.button("🚪 Sair", width="stretch"):
+        st.session_state.pop("user", None)
+        st.cache_data.clear()
+        st.rerun()
 
     persona = st.radio(
         "Persona",
@@ -64,6 +98,8 @@ with st.sidebar:
             "🤖 Inteligência",
             "⚙️ Monitor ETL",
         ]
+        if _u.get("is_admin"):
+            opcoes.append("👤 Usuários")
 
     pagina = st.radio(
         "Navegação",
@@ -137,3 +173,10 @@ elif pagina == "⚙️ Monitor ETL":
 elif pagina == "🧑‍💻 Minha fila":
     from dashboard._pages import minha_fila
     minha_fila.render()
+
+elif pagina == "👤 Usuários":
+    if not st.session_state["user"].get("is_admin"):
+        st.error("Acesso restrito a administradores.")
+        st.stop()
+    from dashboard._pages import usuarios
+    usuarios.render()

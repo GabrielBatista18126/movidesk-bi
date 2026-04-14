@@ -21,27 +21,36 @@ _CORES = {
 }
 
 
-def _send_email(subject: str, body_html: str) -> None:
+def _send_email(subject: str, body_html: str, to_override: str | None = None) -> None:
+    """Envia e-mail via SMTP. Se `to_override` for passado, vai APENAS para esse endereço
+    (sem CC), usado para e-mails pessoais (ex: código de login)."""
     placeholders = {"seu@email.com", "senha_do_email", "gestor@empresa.com", ""}
-    if (not all([config.SMTP_USER, config.SMTP_PASS, config.ALERT_EMAIL])
+    if (not all([config.SMTP_USER, config.SMTP_PASS])
             or config.SMTP_USER in placeholders
             or config.SMTP_PASS in placeholders):
         logger.debug("E-mail não configurado. Pulando envio de alerta.")
         return
 
+    if to_override:
+        to_main = to_override
+        cc_list: list[str] = []
+    else:
+        if not config.ALERT_EMAIL:
+            logger.debug("ALERT_EMAIL não configurado. Pulando envio.")
+            return
+        to_main = config.ALERT_EMAIL
+        cc_list = [e.strip() for e in config.ALERT_EMAIL_CC.split(",") if e.strip()]
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = config.SMTP_FROM
-    msg["To"]      = config.ALERT_EMAIL
-
-    # Cópia para destinatários adicionais
-    cc_list = [e.strip() for e in config.ALERT_EMAIL_CC.split(",") if e.strip()]
+    msg["To"]      = to_main
     if cc_list:
         msg["Cc"] = ", ".join(cc_list)
 
     msg.attach(MIMEText(body_html, "html"))
 
-    all_recipients = [config.ALERT_EMAIL] + cc_list
+    all_recipients = [to_main] + cc_list
 
     try:
         with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT) as server:
@@ -49,7 +58,7 @@ def _send_email(subject: str, body_html: str) -> None:
             server.starttls()
             server.login(config.SMTP_USER, config.SMTP_PASS)
             server.sendmail(config.SMTP_FROM, all_recipients, msg.as_string())
-        logger.info("Alerta enviado para %s", ", ".join(all_recipients))
+        logger.info("E-mail enviado para %s", ", ".join(all_recipients))
     except Exception as exc:
         logger.error("Falha ao enviar e-mail: %s", exc)
 

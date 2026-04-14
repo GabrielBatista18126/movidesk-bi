@@ -13,6 +13,7 @@ from sqlalchemy.engine import URL
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+_DATABASE_URL = os.getenv("DATABASE_URL", "")
 _DB_HOST = os.getenv("DB_HOST", "localhost")
 _DB_PORT = os.getenv("DB_PORT", "5432")
 _DB_NAME = os.getenv("DB_NAME", "movidesk_bi")
@@ -25,14 +26,19 @@ _ENGINE = None
 def _engine():
     global _ENGINE
     if _ENGINE is None:
-        url = URL.create(
-            drivername="postgresql+psycopg2",
-            username=_DB_USER,
-            password=_DB_PASS,
-            host=_DB_HOST,
-            port=int(_DB_PORT),
-            database=_DB_NAME,
-        )
+        if _DATABASE_URL:
+            url = _DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+            if url.startswith("postgresql://"):
+                url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        else:
+            url = URL.create(
+                drivername="postgresql+psycopg2",
+                username=_DB_USER,
+                password=_DB_PASS,
+                host=_DB_HOST,
+                port=int(_DB_PORT),
+                database=_DB_NAME,
+            )
         _ENGINE = create_engine(url, pool_pre_ping=True)
     return _ENGINE
 

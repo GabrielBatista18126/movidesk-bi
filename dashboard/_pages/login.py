@@ -1,89 +1,86 @@
-"""Página: Login / Cadastro por código enviado ao e-mail."""
+"""Página: Login com e-mail + senha; força troca no 1º acesso."""
 import streamlit as st
 
 from dashboard import auth
 
 
-def _render_step_email():
-    st.markdown("### 1. Digite seu e-mail corporativo")
-    st.caption(f"Aceitamos apenas e-mails {auth.EMAIL_DOMAIN}")
+def _render_form_login():
+    st.markdown("### Entrar")
+    st.caption(f"Acesso restrito a e-mails {auth.EMAIL_DOMAIN}.")
 
-    with st.form("form_email", clear_on_submit=False):
+    with st.form("form_login", clear_on_submit=False):
         email = st.text_input(
             "E-mail",
             value=st.session_state.get("login_email", ""),
             placeholder="seu.nome@rivio.com.br",
             autocomplete="email",
         )
-        nome = st.text_input(
-            "Nome (apenas no primeiro acesso)",
-            value=st.session_state.get("login_nome", ""),
-            placeholder="Seu nome completo — opcional",
+        senha = st.text_input(
+            "Senha",
+            type="password",
+            autocomplete="current-password",
         )
-        submitted = st.form_submit_button("Enviar código", type="primary", width="stretch")
+        submitted = st.form_submit_button("Entrar", type="primary", width="stretch")
 
     if submitted:
         email_norm = email.strip().lower()
-        if not auth.email_permitido(email_norm):
-            st.error(f"Somente e-mails {auth.EMAIL_DOMAIN} são aceitos.")
-            return
-
-        ok, msg = auth.enviar_codigo(email_norm)
+        ok, msg, user = auth.autenticar(email_norm, senha)
         if not ok:
             st.error(msg)
             return
 
-        st.session_state["login_email"] = email_norm
-        st.session_state["login_nome"] = nome.strip() or None
-        st.session_state["login_step"] = "code"
-        st.success(msg)
-        st.rerun()
-
-
-def _render_step_code():
-    email = st.session_state.get("login_email", "")
-    st.markdown("### 2. Digite o código de 6 dígitos")
-    st.caption(f"Enviamos um código para **{email}** — ele expira em {auth.CODE_TTL_MIN} min.")
-
-    with st.form("form_code", clear_on_submit=False):
-        code = st.text_input(
-            "Código", max_chars=6,
-            placeholder="000000",
-            help="6 dígitos. Sem espaços.",
-        )
-        c1, c2 = st.columns([1, 1])
-        submitted = c1.form_submit_button("Entrar", type="primary", width="stretch")
-        reenviar = c2.form_submit_button("Reenviar código", width="stretch")
-
-    if reenviar:
-        ok, msg = auth.enviar_codigo(email)
-        (st.success if ok else st.error)(msg)
-        return
-
-    if submitted:
-        ok, msg = auth.validar_codigo(
-            email, code, nome=st.session_state.get("login_nome"),
-        )
-        if not ok:
-            st.error(msg)
-            return
-
-        user = auth.get_user(email)
-        if user and not user.get("is_ativo"):
-            st.error("Seu acesso foi desativado. Fale com o administrador.")
-            return
+        if user.get("must_change_password"):
+            st.session_state["pending_user"] = user
+            st.session_state["login_step"] = "change"
+            st.rerun()
 
         st.session_state["user"] = user
-        # Limpa estado do fluxo de login
-        for k in ("login_email", "login_nome", "login_step"):
-            st.session_state.pop(k, None)
         st.success("Autenticado! Carregando...")
         st.rerun()
 
 
-def _render_voltar():
-    if st.button("← Usar outro e-mail"):
-        for k in ("login_email", "login_nome", "login_step"):
+def _render_form_troca_senha():
+    user = st.session_state.get("pending_user")
+    if not user:
+        st.session_state["login_step"] = "login"
+        st.rerun()
+
+    st.markdown("### 🔒 Troque sua senha")
+    st.caption(
+        f"Primeiro acesso de **{user['email']}** — defina uma senha pessoal "
+        f"antes de continuar."
+    )
+
+    with st.form("form_troca", clear_on_submit=False):
+        nova = st.text_input(
+            "Nova senha", type="password", autocomplete="new-password",
+            help=f"Mínimo {auth.MIN_PASSWORD_LEN} caracteres, com letra e número.",
+        )
+        confirm = st.text_input(
+            "Confirme a nova senha", type="password", autocomplete="new-password",
+        )
+        submitted = st.form_submit_button("Salvar e entrar", type="primary", width="stretch")
+
+    if submitted:
+        if nova != confirm:
+            st.error("As senhas não coincidem.")
+            return
+        ok, msg = auth.alterar_senha(user["email"], nova)
+        if not ok:
+            st.error(msg)
+            return
+
+        fresh = auth.get_user(user["email"])
+        st.session_state["user"] = fresh
+        st.session_state.pop("pending_user", None)
+        st.session_state.pop("login_step", None)
+        st.success("Senha atualizada. Carregando...")
+        st.rerun()
+
+
+def _render_cancelar():
+    if st.button("← Cancelar e voltar ao login"):
+        for k in ("pending_user", "login_step"):
             st.session_state.pop(k, None)
         st.rerun()
 
@@ -92,20 +89,20 @@ def render():
     st.markdown(
         "<h1 style='text-align:center;margin-top:40px'>📊 Movidesk BI</h1>"
         "<p style='text-align:center;color:#888;margin-bottom:40px'>"
-        "Acesso restrito · login por código enviado ao e-mail</p>",
+        "Acesso restrito · login com e-mail e senha</p>",
         unsafe_allow_html=True,
     )
 
     col_l, col_m, col_r = st.columns([1, 2, 1])
     with col_m:
         with st.container(border=True):
-            step = st.session_state.get("login_step", "email")
-            if step == "code":
-                _render_step_code()
+            step = st.session_state.get("login_step", "login")
+            if step == "change":
+                _render_form_troca_senha()
                 st.markdown("---")
-                _render_voltar()
+                _render_cancelar()
             else:
-                _render_step_email()
+                _render_form_login()
 
     st.markdown(
         "<p style='text-align:center;font-size:11px;color:#666;margin-top:40px'>"

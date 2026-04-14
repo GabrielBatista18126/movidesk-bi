@@ -13,17 +13,32 @@ load_dotenv(dotenv_path=_env_path)
 
 
 # ─── Movidesk ─────────────────────────────────────────────────────
-MOVIDESK_TOKEN    = os.environ["MOVIDESK_TOKEN"]
+# Token só é obrigatório no ETL. O dashboard pode subir sem ele
+# (nesse caso, "🔄 Atualizar dados" fica indisponível).
+MOVIDESK_TOKEN    = os.getenv("MOVIDESK_TOKEN", "")
 MOVIDESK_BASE_URL = os.getenv("MOVIDESK_BASE_URL", "https://api.movidesk.com/public/v1")
 
 # ─── PostgreSQL ───────────────────────────────────────────────────
-DB_CONFIG = {
-    "host":     os.getenv("DB_HOST",     "localhost"),
-    "port":     int(os.getenv("DB_PORT", "5432")),
-    "dbname":   os.environ["DB_NAME"],
-    "user":     os.environ["DB_USER"],
-    "password": os.environ["DB_PASSWORD"],
-}
+# Suporta tanto DATABASE_URL (Railway/Neon/Heroku) quanto variáveis separadas (local).
+_DATABASE_URL = os.getenv("DATABASE_URL", "")
+if _DATABASE_URL:
+    from urllib.parse import urlparse
+    _u = urlparse(_DATABASE_URL)
+    DB_CONFIG = {
+        "host":     _u.hostname,
+        "port":     _u.port or 5432,
+        "dbname":   (_u.path or "/").lstrip("/"),
+        "user":     _u.username,
+        "password": _u.password,
+    }
+else:
+    DB_CONFIG = {
+        "host":     os.getenv("DB_HOST",     "localhost"),
+        "port":     int(os.getenv("DB_PORT", "5432")),
+        "dbname":   os.environ["DB_NAME"],
+        "user":     os.environ["DB_USER"],
+        "password": os.environ["DB_PASSWORD"],
+    }
 
 # ─── ETL ──────────────────────────────────────────────────────────
 PAGE_SIZE   = int(os.getenv("PAGE_SIZE",   "50"))

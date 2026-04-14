@@ -5,6 +5,54 @@ import streamlit as st
 from dashboard import auth
 
 
+def _render_form_criar():
+    st.subheader("➕ Criar novo usuário")
+    st.caption(
+        f"Apenas e-mails {auth.EMAIL_DOMAIN}. O usuário será obrigado a trocar "
+        f"a senha no 1º acesso."
+    )
+
+    with st.form("form_criar_usuario", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            email = st.text_input("E-mail *", placeholder="nome.sobrenome@rivio.com.br")
+            nome = st.text_input("Nome", placeholder="Nome completo (opcional)")
+        with c2:
+            senha = st.text_input(
+                "Senha inicial *",
+                type="password",
+                help=f"Mínimo {auth.MIN_PASSWORD_LEN} caracteres, com letra e número.",
+            )
+            novo_admin = st.checkbox("👑 Criar como admin", value=False)
+        submitted = st.form_submit_button("Criar usuário", type="primary")
+
+    if submitted:
+        ok, msg = auth.criar_usuario(
+            email=email, nome=nome, senha_inicial=senha, is_admin=novo_admin,
+        )
+        if ok:
+            st.success(msg)
+            st.rerun()
+        else:
+            st.error(msg)
+
+
+def _render_reset_senha(alvo: str):
+    with st.expander("🔑 Resetar senha deste usuário"):
+        st.caption("Após o reset, o usuário será forçado a trocar no próximo login.")
+        with st.form(f"form_reset_{alvo}", clear_on_submit=True):
+            nova = st.text_input(
+                "Nova senha temporária",
+                type="password",
+                help=f"Mínimo {auth.MIN_PASSWORD_LEN} caracteres, com letra e número.",
+                key=f"reset_pwd_{alvo}",
+            )
+            submitted = st.form_submit_button("Resetar senha", type="primary")
+        if submitted:
+            ok, msg = auth.resetar_senha(alvo, nova)
+            (st.success if ok else st.error)(msg)
+
+
 def render():
     st.title("👤 Usuários")
     st.caption("Quem pode acessar o dashboard. Apenas admins veem esta página.")
@@ -14,11 +62,19 @@ def render():
     df = auth.listar_usuarios()
 
     # ── KPIs ──────────────────────────────────────────────────────
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("👥 Total", len(df))
     c2.metric("👑 Admins", int(df["is_admin"].sum()) if not df.empty else 0)
     c3.metric("🟢 Ativos", int(df["is_ativo"].sum()) if not df.empty else 0)
+    c4.metric(
+        "🔒 Senha pendente",
+        int(df["must_change_password"].sum()) if not df.empty else 0,
+    )
 
+    st.markdown("---")
+
+    # ── Criar novo ────────────────────────────────────────────────
+    _render_form_criar()
     st.markdown("---")
 
     # ── Tabela ────────────────────────────────────────────────────
@@ -32,11 +88,15 @@ def render():
         tbl["ultimo_login"] = tbl["ultimo_login"].fillna("—")
         tbl["is_admin"] = tbl["is_admin"].map({True: "👑 SIM", False: "—"})
         tbl["is_ativo"] = tbl["is_ativo"].map({True: "🟢 Ativo", False: "🔴 Desativado"})
+        tbl["must_change_password"] = tbl["must_change_password"].map(
+            {True: "🔒 Sim", False: "—"}
+        )
         st.dataframe(
             tbl.rename(columns={
                 "email": "E-mail", "nome": "Nome",
                 "is_admin": "Admin", "is_ativo": "Status",
                 "criado_em": "Criado em", "ultimo_login": "Último login",
+                "must_change_password": "Trocar senha",
             }),
             width="stretch", hide_index=True,
         )
@@ -103,3 +163,5 @@ def render():
         if cc2.button("✖️ Cancelar", key=f"confirm_no_{alvo}"):
             st.session_state.pop(f"confirm_del_{alvo}", None)
             st.rerun()
+
+    _render_reset_senha(alvo)

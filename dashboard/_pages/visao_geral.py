@@ -14,6 +14,16 @@ _CORES_ANALISTAS = [
 ]
 
 
+def _safe_float(value, default: float = 0.0) -> float:
+    num = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    return float(num) if pd.notna(num) else default
+
+
+def _safe_int(value, default: int = 0) -> int:
+    num = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    return int(num) if pd.notna(num) else default
+
+
 def _risco_cliente(horas: float, total: float) -> str:
     pct = horas / total * 100 if total > 0 else 0
     if pct >= 20:
@@ -85,10 +95,10 @@ def render():
     # Se nenhum filtro, usa KPIs originais (mais precisos)
     if not filtro_data_ativo and not filtro_analista_ativo:
         kpis = db.visao_geral_kpis()
-        total_horas = float(kpis["total_horas"].iloc[0]) if not kpis.empty else 0
-        total_apontamentos = int(kpis["total_apontamentos"].iloc[0]) if not kpis.empty else 0
-        total_clientes = int(kpis["total_clientes"].iloc[0]) if not kpis.empty else 0
-        total_analistas = int(kpis["total_analistas"].iloc[0]) if not kpis.empty else 0
+        total_horas = _safe_float(kpis["total_horas"].iloc[0]) if not kpis.empty else 0
+        total_apontamentos = _safe_int(kpis["total_apontamentos"].iloc[0]) if not kpis.empty else 0
+        total_clientes = _safe_int(kpis["total_clientes"].iloc[0]) if not kpis.empty else 0
+        total_analistas = _safe_int(kpis["total_analistas"].iloc[0]) if not kpis.empty else 0
 
     # ── Banner de alerta ─────────────────────────────────────────
     if not horas_cliente.empty and not horas_analista.empty:

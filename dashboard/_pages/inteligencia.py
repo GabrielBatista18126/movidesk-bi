@@ -9,6 +9,16 @@ from dashboard import db
 _COR_CLASS = {"BAIXO": "#70AD47", "MEDIO": "#FFC000", "ALTO": "#FF6B00", "CRITICO": "#C00000"}
 
 
+def _safe_int(value, default: int = 0) -> int:
+    num = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    return int(num) if pd.notna(num) else default
+
+
+def _safe_float(value, default: float = 0.0) -> float:
+    num = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    return float(num) if pd.notna(num) else default
+
+
 def render():
     st.title("🤖 Inteligência")
     st.caption("Previsões de estouro, score de risco e sugestões de upgrade")
@@ -36,7 +46,7 @@ def render():
         k1, k2, k3 = st.columns(3)
         k1.metric("🔴 Vão estourar",   len(vao_estourar))
         k2.metric("🟢 Dentro do limite", len(ok))
-        k3.metric("📅 Dias até fim do mês", int(prev_df["dias_ate_fim_mes"].iloc[0]) if not prev_df.empty else "—")
+        k3.metric("📅 Dias até fim do mês", _safe_int(prev_df["dias_ate_fim_mes"].iloc[0]) if not prev_df.empty else "—")
 
         # Gráfico de barras comparando atual vs previsto vs contratado
         fig = go.Figure()
@@ -235,9 +245,9 @@ def render():
     if prev_tk.empty:
         st.info("Sem previsão disponível. Histórico insuficiente.")
     else:
-        total_7d = prev_tk["tickets_previstos"].sum()
-        media_30d = prev_tk["media_30d"].iloc[0] if not prev_tk.empty else 0
-        tendencia = prev_tk["tendencia_pct"].iloc[0] if not prev_tk.empty else 0
+        total_7d = _safe_float(prev_tk["tickets_previstos"].sum())
+        media_30d = _safe_float(prev_tk["media_30d"].iloc[0]) if not prev_tk.empty else 0
+        tendencia = _safe_float(prev_tk["tendencia_pct"].iloc[0]) if not prev_tk.empty else 0
 
         c1, c2, c3 = st.columns(3)
         c1.metric("📥 Total previsto 7d", f"{total_7d:.0f}")

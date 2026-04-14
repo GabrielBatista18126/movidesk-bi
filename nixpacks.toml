@@ -9,4 +9,4 @@ cmds = [
 ]
 
 [start]
-cmd = "/opt/venv/bin/python scripts/init_db.py && /opt/venv/bin/streamlit run dashboard/app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=false"
+cmd = "/opt/venv/bin/python scripts/init_db.py && /opt/venv/bin/python -m streamlit run dashboard/app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=false"

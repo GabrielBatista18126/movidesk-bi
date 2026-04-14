@@ -3,11 +3,18 @@ init_db.py — Executa todas as migrations SQL em ordem, apenas uma vez cada.
 
 Sem dependência do dashboard/Streamlit: usa psycopg2 direto para que possa
 rodar em containers enxutos (Railway/Render) antes do app subir.
+
+Resilience features:
+  - Retry logic with exponential backoff (up to MAX_RETRIES attempts).
+  - Graceful exit (code 0) when the database is unreachable after all retries,
+    so the Streamlit app can still start and serve the UI.
+  - Set SKIP_DB_INIT=1 to bypass database initialisation entirely.
 """
 import logging
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 import psycopg2
@@ -26,6 +33,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SQL_DIR = Path(__file__).resolve().parent.parent / "sql"
+
+# Retry configuration
+MAX_RETRIES = 5
+INITIAL_BACKOFF_SECONDS = 2  # doubles on each attempt: 2, 4, 8, 16, 32
 
 _CREATE_LEDGER = """
 CREATE TABLE IF NOT EXISTS public.schema_migrations (
@@ -115,19 +126,81 @@ def _conn_kwargs() -> dict:
     )
 
 
+def _connect_with_retry(kw: dict) -> "psycopg2.connection":
+    """Attempt to open a psycopg2 connection with exponential backoff.
+
+    Tries up to MAX_RETRIES times. Raises the last psycopg2 error if every
+    attempt fails so the caller can decide how to handle it.
+    """
+    delay = INITIAL_BACKOFF_SECONDS
+    last_exc: Exception | None = None
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        logger.info(
+            "Tentativa de conexão %d/%d (host=%s port=%s dbname=%s)...",
+            attempt, MAX_RETRIES, kw["host"], kw["port"], kw["dbname"],
+        )
+        try:
+            conn = psycopg2.connect(**kw)
+            logger.info("Conexão estabelecida com sucesso na tentativa %d.", attempt)
+            return conn
+        except psycopg2.OperationalError as exc:
+            last_exc = exc
+            if attempt < MAX_RETRIES:
+                logger.warning(
+                    "Falha na tentativa %d/%d: %s — aguardando %ds antes de tentar novamente.",
+                    attempt, MAX_RETRIES, exc, delay,
+                )
+                time.sleep(delay)
+                delay *= 2  # exponential backoff
+            else:
+                logger.warning(
+                    "Falha na tentativa %d/%d: %s — sem mais tentativas.",
+                    attempt, MAX_RETRIES, exc,
+                )
+
+    raise last_exc  # type: ignore[misc]
+
+
 def _ordem(path: Path) -> int:
     m = re.match(r"(\d+)_", path.name)
     return int(m.group(1)) if m else 9999
 
 
 def main() -> None:
+    # Allow operators to skip DB init entirely (e.g. when running locally
+    # without a database, or when the schema is managed externally).
+    if os.getenv("SKIP_DB_INIT", "").strip().lower() in {"1", "true", "yes"}:
+        logger.info("SKIP_DB_INIT está definido — inicialização do banco ignorada.")
+        return
+
     files = sorted(SQL_DIR.glob("*.sql"), key=_ordem)
     if not files:
         logger.warning("Nenhum .sql encontrado em %s", SQL_DIR)
         return
 
-    kw = _conn_kwargs()
-    with psycopg2.connect(**kw) as conn:
+    try:
+        kw = _conn_kwargs()
+    except ValueError as exc:
+        logger.warning(
+            "Configuração de banco ausente ou inválida: %s — "
+            "inicialização ignorada; o app será iniciado sem o banco.",
+            exc,
+        )
+        return
+
+    try:
+        conn = _connect_with_retry(kw)
+    except Exception as exc:
+        logger.warning(
+            "Banco de dados indisponível após %d tentativas: %s — "
+            "o app será iniciado sem a inicialização do banco. "
+            "Execute 'python scripts/init_db.py' manualmente quando o banco estiver acessível.",
+            MAX_RETRIES, exc,
+        )
+        return
+
+    with conn:
         with conn.cursor() as cur:
             cur.execute(_CREATE_LEDGER)
             cur.execute("SELECT filename FROM public.schema_migrations")
@@ -161,6 +234,8 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except (KeyError, ValueError) as exc:
-        logger.error("Erro de configuração: %s", exc)
-        sys.exit(1)
+    except Exception as exc:
+        logger.error("Erro inesperado durante a inicialização do banco: %s", exc)
+        # Exit with 0 so the start command chain (&&) continues and Streamlit
+        # can still serve the UI even when the database is unavailable.
+        sys.exit(0)

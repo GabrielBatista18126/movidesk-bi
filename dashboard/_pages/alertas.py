@@ -58,10 +58,18 @@ def render():
                       "horas_consumidas", "horas_disponiveis", "pct_consumo", "status_consumo"]].copy()
         df_show.columns = ["Cliente", "Plano", "Contratadas", "Consumidas", "Disponíveis", "% Consumo", "Status"]
         df_show["Status"] = df_show["Status"].apply(lambda s: f"{_semaforo(s)} {s}")
-        df_show["% Consumo"] = df_show["% Consumo"].apply(lambda x: f"{x:.1f}%" if x else "—")
-        df_show["Contratadas"] = df_show["Contratadas"].apply(lambda x: f"{x:.1f}h" if x else "—")
-        df_show["Consumidas"]  = df_show["Consumidas"].apply(lambda x: f"{x:.1f}h" if x else "0.0h")
-        df_show["Disponíveis"] = df_show["Disponíveis"].apply(lambda x: f"{x:.1f}h" if x else "—")
+        df_show["% Consumo"] = df_show["% Consumo"].apply(
+            lambda x: f"{x:.1f}%" if pd.notna(x) else "—"
+        )
+        df_show["Contratadas"] = df_show["Contratadas"].apply(
+            lambda x: f"{x:.1f}h" if pd.notna(x) else "—"
+        )
+        df_show["Consumidas"] = df_show["Consumidas"].apply(
+            lambda x: f"{x:.1f}h" if pd.notna(x) else "0.0h"
+        )
+        df_show["Disponíveis"] = df_show["Disponíveis"].apply(
+            lambda x: f"{x:.1f}h" if pd.notna(x) else "—"
+        )
         st.dataframe(df_show, width="stretch", hide_index=True)
     else:
         st.info("Nenhum cliente encontrado para o filtro selecionado.")

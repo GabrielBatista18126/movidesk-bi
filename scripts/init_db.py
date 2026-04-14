@@ -36,16 +36,83 @@ CREATE TABLE IF NOT EXISTS public.schema_migrations (
 
 
 def _conn_kwargs() -> dict:
+    """Build psycopg2 connection kwargs, always forcing TCP mode via an explicit host.
+
+    Priority:
+      1. Individual DB_* variables (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD)
+      2. DATABASE_URL fallback — host is extracted and re-injected to guarantee TCP
+
+    Raises ValueError if required variables are missing or if host cannot be
+    determined (which would cause psycopg2 to fall back to a Unix socket).
+    """
+    host = os.getenv("DB_HOST", "")
+    port = os.getenv("DB_PORT", "")
+    dbname = os.getenv("DB_NAME", "")
+    user = os.getenv("DB_USER", "")
+    password = os.getenv("DB_PASSWORD", "")
+
+    # Prefer individual variables — they are the most reliable on Railway.
+    if host and dbname and user and password:
+        kwargs = {
+            "host":     host,
+            "port":     int(port) if port else 5432,
+            "dbname":   dbname,
+            "user":     user,
+            "password": password,
+        }
+        logger.info(
+            "Conectando via variáveis DB_*: host=%s port=%s dbname=%s user=%s",
+            kwargs["host"], kwargs["port"], kwargs["dbname"], kwargs["user"],
+        )
+        return kwargs
+
+    # Fall back to DATABASE_URL, but parse it so we can enforce an explicit host.
     url = os.getenv("DATABASE_URL", "")
     if url:
-        return {"dsn": url}
-    return {
-        "host":     os.getenv("DB_HOST", "localhost"),
-        "port":     int(os.getenv("DB_PORT", "5432")),
-        "dbname":   os.environ["DB_NAME"],
-        "user":     os.environ["DB_USER"],
-        "password": os.environ["DB_PASSWORD"],
-    }
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            parsed_host = parsed.hostname or ""
+            parsed_port = parsed.port or 5432
+            parsed_dbname = (parsed.path or "").lstrip("/")
+            parsed_user = parsed.username or ""
+            parsed_password = parsed.password or ""
+
+            missing = [k for k, v in {
+                "host": parsed_host,
+                "dbname": parsed_dbname,
+                "user": parsed_user,
+                "password": parsed_password,
+            }.items() if not v]
+            if missing:
+                raise ValueError(
+                    f"DATABASE_URL está incompleta — campos ausentes: {missing}"
+                )
+
+            kwargs = {
+                "host":     parsed_host,
+                "port":     parsed_port,
+                "dbname":   parsed_dbname,
+                "user":     parsed_user,
+                "password": parsed_password,
+            }
+            logger.info(
+                "Conectando via DATABASE_URL: host=%s port=%s dbname=%s user=%s",
+                kwargs["host"], kwargs["port"], kwargs["dbname"], kwargs["user"],
+            )
+            return kwargs
+        except Exception as exc:
+            raise ValueError(f"Falha ao interpretar DATABASE_URL: {exc}") from exc
+
+    # Neither individual vars nor DATABASE_URL are usable.
+    missing_vars = [
+        v for v in ("DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD")
+        if not os.getenv(v)
+    ]
+    raise ValueError(
+        "Nenhuma configuração de banco encontrada. "
+        f"Configure DATABASE_URL ou as variáveis: {missing_vars}"
+    )
 
 
 def _ordem(path: Path) -> int:
@@ -94,6 +161,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except KeyError as exc:
-        logger.error("Variável de ambiente ausente: %s. Configure DATABASE_URL ou DB_*.", exc)
+    except (KeyError, ValueError) as exc:
+        logger.error("Erro de configuração: %s", exc)
         sys.exit(1)

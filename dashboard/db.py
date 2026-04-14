@@ -154,14 +154,82 @@ def consumo_mensal() -> pd.DataFrame:
 
 def alerta_consumo() -> pd.DataFrame:
     return query("""
-        SELECT * FROM analytics.v_alerta_consumo
+        WITH resumo_mes AS (
+            SELECT
+                COALESCE(te.organization_id, te.client_id)         AS client_id,
+                COALESCE(te.organization_name, te.client_name, '') AS client_name,
+                ROUND(SUM(te.hours_spent)::numeric, 2)             AS horas_consumidas,
+                COUNT(DISTINCT te.ticket_id)                       AS qtd_tickets
+            FROM raw.time_entries te
+            WHERE DATE_TRUNC('month', te.entry_date) = DATE_TRUNC('month', CURRENT_DATE)
+              AND te.hours_spent > 0
+            GROUP BY 1, 2
+        )
+        SELECT
+            r.client_id,
+            r.client_name,
+            cv.plano_nome,
+            cv.horas_contratadas,
+            r.horas_consumidas,
+            r.qtd_tickets,
+            CASE
+                WHEN cv.horas_contratadas IS NOT NULL
+                THEN cv.horas_contratadas - r.horas_consumidas
+            END AS horas_disponiveis,
+            CASE
+                WHEN cv.horas_contratadas > 0
+                THEN ROUND((r.horas_consumidas / cv.horas_contratadas * 100)::numeric, 1)
+            END AS pct_consumo,
+            CASE
+                WHEN cv.horas_contratadas IS NULL                    THEN 'SEM_CONTRATO'
+                WHEN r.horas_consumidas >= cv.horas_contratadas      THEN 'ESTOURADO'
+                WHEN r.horas_consumidas >= cv.horas_contratadas * 0.8 THEN 'CRITICO'
+                WHEN r.horas_consumidas >= cv.horas_contratadas * 0.6 THEN 'ATENCAO'
+                ELSE 'NORMAL'
+            END AS status_consumo,
+            TO_CHAR(CURRENT_DATE, 'YYYY-MM') AS mes_referencia
+        FROM resumo_mes r
+        LEFT JOIN analytics.v_contrato_vigente cv ON cv.client_id = r.client_id
         ORDER BY pct_consumo DESC NULLS LAST
     """)
 
 
 def historico_consumo() -> pd.DataFrame:
     return query("""
-        SELECT * FROM analytics.v_historico_consumo
+        WITH consumo_mensal AS (
+            SELECT
+                TO_CHAR(te.entry_date, 'YYYY-MM')                  AS ano_mes,
+                COALESCE(te.organization_id, te.client_id)         AS client_id,
+                COALESCE(te.organization_name, te.client_name, '') AS client_name,
+                ROUND(SUM(te.hours_spent)::numeric, 2)             AS horas_consumidas,
+                COUNT(DISTINCT te.ticket_id)                       AS qtd_tickets,
+                COUNT(te.id)                                       AS qtd_lancamentos
+            FROM raw.time_entries te
+            WHERE te.hours_spent > 0
+            GROUP BY 1, 2, 3
+        )
+        SELECT
+            cm.ano_mes,
+            cm.client_id,
+            cm.client_name,
+            cv.plano_nome,
+            cv.horas_contratadas,
+            cm.horas_consumidas,
+            cm.qtd_tickets,
+            cm.qtd_lancamentos,
+            CASE
+                WHEN cv.horas_contratadas > 0
+                THEN ROUND((cm.horas_consumidas / cv.horas_contratadas * 100)::numeric, 1)
+            END AS pct_consumo,
+            CASE
+                WHEN cv.horas_contratadas IS NULL                     THEN 'SEM_CONTRATO'
+                WHEN cm.horas_consumidas >= cv.horas_contratadas      THEN 'ESTOURADO'
+                WHEN cm.horas_consumidas >= cv.horas_contratadas * 0.8 THEN 'CRITICO'
+                WHEN cm.horas_consumidas >= cv.horas_contratadas * 0.6 THEN 'ATENCAO'
+                ELSE 'NORMAL'
+            END AS status_consumo
+        FROM consumo_mensal cm
+        LEFT JOIN analytics.v_contrato_vigente cv ON cv.client_id = cm.client_id
         ORDER BY ano_mes, client_name
     """)
 

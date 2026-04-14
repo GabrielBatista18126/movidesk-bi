@@ -296,6 +296,97 @@ def sugestoes_upgrade() -> pd.DataFrame:
     return query("SELECT * FROM analytics.v_sugestoes_upgrade")
 
 
+def oportunidades_receita() -> pd.DataFrame:
+    """
+    Oportunidades de ganho de receita no mês atual para clientes com >= 80% de consumo.
+    - EXCEDENTE_ATUAL: já passou do contratado.
+    - RISCO_EXCEDENTE: ainda não estourou, mas projeção indica excedente até o fim do mês.
+    """
+    return query("""
+        WITH consumo_mes AS (
+            SELECT
+                COALESCE(te.organization_id, te.client_id)         AS client_id,
+                COALESCE(te.organization_name, te.client_name, '') AS client_name,
+                SUM(te.hours_spent)                                AS horas_consumidas
+            FROM raw.time_entries te
+            WHERE DATE_TRUNC('month', te.entry_date) = DATE_TRUNC('month', CURRENT_DATE)
+              AND te.hours_spent > 0
+            GROUP BY 1, 2
+        ),
+        contrato_vigente AS (
+            SELECT DISTINCT ON (COALESCE(c.organization_id, c.client_id))
+                COALESCE(c.organization_id, c.client_id) AS client_id,
+                c.client_name,
+                c.plano_nome,
+                c.horas_contratadas,
+                c.valor_mensal,
+                c.hora_extra_valor
+            FROM analytics.contratos c
+            WHERE c.ativo = TRUE
+              AND c.vigencia_inicio <= CURRENT_DATE
+              AND (c.vigencia_fim IS NULL OR c.vigencia_fim >= CURRENT_DATE)
+            ORDER BY COALESCE(c.organization_id, c.client_id),
+                     c.vigencia_inicio DESC,
+                     c.updated_at DESC NULLS LAST,
+                     c.id DESC
+        ),
+        base AS (
+            SELECT
+                cm.client_id,
+                cm.client_name,
+                cv.plano_nome,
+                cv.horas_contratadas,
+                cm.horas_consumidas,
+                COALESCE(
+                    cv.hora_extra_valor,
+                    cv.valor_mensal / NULLIF(cv.horas_contratadas, 0),
+                    0
+                ) AS valor_hora_referencia,
+                EXTRACT(DAY FROM CURRENT_DATE)::numeric AS dia_atual,
+                EXTRACT(
+                    DAY FROM (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')
+                )::numeric AS dias_no_mes
+            FROM consumo_mes cm
+            JOIN contrato_vigente cv ON cv.client_id = cm.client_id
+            WHERE cv.horas_contratadas > 0
+        ),
+        calc AS (
+            SELECT
+                b.*,
+                ROUND((b.horas_consumidas / NULLIF(b.horas_contratadas, 0) * 100)::numeric, 1) AS pct_consumo,
+                (b.horas_consumidas / NULLIF(b.dia_atual, 0) * b.dias_no_mes) AS horas_previstas_fim_mes
+            FROM base b
+        )
+        SELECT
+            c.client_id,
+            c.client_name,
+            c.plano_nome,
+            ROUND(c.horas_contratadas::numeric, 2) AS horas_contratadas,
+            ROUND(c.horas_consumidas::numeric, 2) AS horas_consumidas,
+            c.pct_consumo,
+            ROUND(c.horas_previstas_fim_mes::numeric, 2) AS horas_previstas_fim_mes,
+            ROUND(GREATEST(c.horas_consumidas - c.horas_contratadas, 0)::numeric, 2) AS horas_excedentes_atuais,
+            ROUND(GREATEST(c.horas_previstas_fim_mes - c.horas_contratadas, 0)::numeric, 2) AS horas_excedentes_previstas,
+            ROUND(c.valor_hora_referencia::numeric, 2) AS valor_hora_referencia,
+            ROUND(
+                (GREATEST(c.horas_consumidas - c.horas_contratadas, 0) * c.valor_hora_referencia)::numeric,
+                2
+            ) AS receita_excedente_atual,
+            ROUND(
+                (GREATEST(c.horas_previstas_fim_mes - c.horas_contratadas, 0) * c.valor_hora_referencia)::numeric,
+                2
+            ) AS receita_potencial_fim_mes,
+            CASE
+                WHEN c.horas_consumidas >= c.horas_contratadas THEN 'EXCEDENTE_ATUAL'
+                WHEN c.horas_previstas_fim_mes > c.horas_contratadas THEN 'RISCO_EXCEDENTE'
+                ELSE 'DENTRO_LIMITE'
+            END AS tipo_oportunidade
+        FROM calc c
+        WHERE c.pct_consumo >= 80
+        ORDER BY receita_potencial_fim_mes DESC NULLS LAST, c.pct_consumo DESC
+    """)
+
+
 def anomalias_recentes(dias: int = 7) -> pd.DataFrame:
     return query(f"""
         SELECT *

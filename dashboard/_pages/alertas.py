@@ -18,11 +18,18 @@ def _semaforo(status: str) -> str:
     return emoji.get(status, "⚪")
 
 
+def _fmt_moeda(v) -> str:
+    if pd.isna(v):
+        return "—"
+    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def render():
     st.title("🚨 Alertas de Consumo")
 
     alerta_df = db.alerta_consumo()
     historico_df = db.historico_consumo()
+    receita_df = db.oportunidades_receita()
 
     if alerta_df.empty:
         st.warning("Nenhum contrato cadastrado ainda. Cadastre os contratos para ver os alertas.")
@@ -40,6 +47,65 @@ def render():
     k2.metric("🟠 Críticos",    criticos)
     k3.metric("🟡 Em atenção",  atencao)
     k4.metric("🟢 Normais",     normais)
+
+    # Potencial de receita (excedente atual + risco de excedente até fim do mês)
+    if not receita_df.empty:
+        total_potencial = pd.to_numeric(
+            receita_df["receita_potencial_fim_mes"], errors="coerce"
+        ).fillna(0).sum()
+        total_atual = pd.to_numeric(
+            receita_df["receita_excedente_atual"], errors="coerce"
+        ).fillna(0).sum()
+        clientes_oportunidade = int(
+            (receita_df["tipo_oportunidade"].isin(["EXCEDENTE_ATUAL", "RISCO_EXCEDENTE"])).sum()
+        )
+
+        st.markdown("---")
+        st.subheader("💰 Potencial de ganho de receita")
+        r1, r2, r3 = st.columns(3)
+        r1.metric("Potencial até o fim do mês", _fmt_moeda(total_potencial))
+        r2.metric("Excedente já ocorrido", _fmt_moeda(total_atual))
+        r3.metric("Clientes com oportunidade", clientes_oportunidade)
+
+        oportunidades = receita_df[
+            receita_df["tipo_oportunidade"].isin(["EXCEDENTE_ATUAL", "RISCO_EXCEDENTE"])
+        ].copy()
+        if not oportunidades.empty:
+            oportunidades = oportunidades.rename(columns={
+                "client_name": "Cliente",
+                "plano_nome": "Plano",
+                "horas_contratadas": "Contratadas",
+                "horas_consumidas": "Consumidas",
+                "horas_previstas_fim_mes": "Previsto fim do mês",
+                "receita_excedente_atual": "Receita excedente atual",
+                "receita_potencial_fim_mes": "Receita potencial fim do mês",
+                "tipo_oportunidade": "Tipo",
+            })
+            oportunidades["Tipo"] = oportunidades["Tipo"].map({
+                "EXCEDENTE_ATUAL": "🔴 Excedente atual",
+                "RISCO_EXCEDENTE": "🟠 Risco de excedente",
+            }).fillna(oportunidades["Tipo"])
+            oportunidades["Contratadas"] = oportunidades["Contratadas"].apply(
+                lambda x: f"{x:.1f}h" if pd.notna(x) else "—"
+            )
+            oportunidades["Consumidas"] = oportunidades["Consumidas"].apply(
+                lambda x: f"{x:.1f}h" if pd.notna(x) else "0.0h"
+            )
+            oportunidades["Previsto fim do mês"] = oportunidades["Previsto fim do mês"].apply(
+                lambda x: f"{x:.1f}h" if pd.notna(x) else "—"
+            )
+            oportunidades["Receita excedente atual"] = oportunidades["Receita excedente atual"].apply(_fmt_moeda)
+            oportunidades["Receita potencial fim do mês"] = oportunidades["Receita potencial fim do mês"].apply(_fmt_moeda)
+
+            st.dataframe(
+                oportunidades[[
+                    "Cliente", "Plano", "Tipo",
+                    "Contratadas", "Consumidas", "Previsto fim do mês",
+                    "Receita excedente atual", "Receita potencial fim do mês",
+                ]],
+                width="stretch",
+                hide_index=True,
+            )
 
     st.markdown("---")
 

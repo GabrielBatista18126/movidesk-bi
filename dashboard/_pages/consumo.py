@@ -1,6 +1,5 @@
 """Página: Consumo de Contrato."""
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard import db
@@ -16,7 +15,6 @@ def render():
 
     meses = db.meses_disponiveis()
     consumo_df = db.consumo_mensal()
-    resumo = db.resumo_mes_atual()
 
     # ── Filtros ───────────────────────────────────────────────────
     col_f1, col_f2 = st.columns([2, 3])
@@ -26,13 +24,18 @@ def render():
             options=meses if meses else ["(sem dados)"],
             index=0,
         )
+
+    resumo = db.resumo_mes_atual(None if mes_sel == "(sem dados)" else mes_sel)
+
     with col_f2:
-        clientes_lista = sorted(consumo_df["client_name"].unique().tolist()) if not consumo_df.empty else []
+        clientes_lista = sorted(resumo["client_name"].unique().tolist()) if not resumo.empty else []
         cliente_sel = st.multiselect("Filtrar por cliente", options=clientes_lista, default=[])
+
+    periodo_label = mes_sel if mes_sel and mes_sel != "(sem dados)" else "mês atual"
 
     st.markdown("---")
 
-    # ── KPIs mês atual ────────────────────────────────────────────
+    # ── KPIs do período selecionado ───────────────────────────────
     if not resumo.empty:
         total_horas = resumo["horas_mes_atual"].sum()
         total_clientes = len(resumo)
@@ -43,34 +46,37 @@ def render():
         k2.metric("🏢 Clientes com lançamentos", total_clientes)
         k3.metric("🎫 Tickets atendidos", int(total_tickets))
     else:
-        st.info("Nenhum lançamento encontrado para o mês atual.")
+        st.info("Nenhum lançamento encontrado para o período selecionado.")
 
     st.markdown("---")
 
     # ── Tabela de consumo ─────────────────────────────────────────
-    st.subheader("📊 Consumo por cliente — mês atual")
+    st.subheader(f"📊 Consumo por cliente — {periodo_label}")
     if not resumo.empty:
         df = resumo.copy()
         if cliente_sel:
             df = df[df["client_name"].isin(cliente_sel)]
 
         df = df.rename(columns={
-            "client_name":        "Cliente",
-            "horas_mes_atual":    "Horas consumidas",
-            "tickets_mes_atual":  "Tickets",
+            "client_name": "Cliente",
+            "horas_mes_atual": "Horas consumidas",
+            "tickets_mes_atual": "Tickets",
             "lancamentos_mes_atual": "Lançamentos",
-            "ultimo_lancamento":  "Último lançamento",
+            "ultimo_lancamento": "Último lançamento",
         })
         df["Último lançamento"] = df["Último lançamento"].astype(str).str[:16]
-        st.dataframe(df[["Cliente", "Horas consumidas", "Tickets", "Lançamentos", "Último lançamento"]],
-                     width="stretch", hide_index=True)
+        st.dataframe(
+            df[["Cliente", "Horas consumidas", "Tickets", "Lançamentos", "Último lançamento"]],
+            width="stretch",
+            hide_index=True,
+        )
     else:
         st.info("Sem dados para o período selecionado.")
 
     st.markdown("---")
 
     # ── Gráfico de barras: horas por cliente ──────────────────────
-    st.subheader("📈 Horas consumidas por cliente")
+    st.subheader(f"📈 Horas consumidas por cliente — {periodo_label}")
     if not resumo.empty:
         df_bar = resumo.copy()
         if cliente_sel:
@@ -101,7 +107,7 @@ def render():
     st.markdown("---")
 
     # ── Histórico mensal por cliente ──────────────────────────────
-    st.subheader("📅 Histórico mensal de consumo")
+    st.subheader("🗓️ Histórico mensal de consumo")
     if not consumo_df.empty:
         df_hist = consumo_df.copy()
         if cliente_sel:

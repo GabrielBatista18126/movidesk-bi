@@ -99,12 +99,57 @@ def query(sql: str, params=None) -> pd.DataFrame:
     return _query_raw(sql, params)
 
 
-def resumo_mes_atual() -> pd.DataFrame:
-    return query("SELECT * FROM analytics.v_resumo_mes_atual ORDER BY horas_mes_atual DESC")
+def resumo_mes_atual(mes_referencia: str | None = None) -> pd.DataFrame:
+    """
+    Resumo por cliente para um mês de referência (YYYY-MM).
+    Usa consumo bruto de raw.time_entries para manter consistência com o total real de horas.
+    """
+    if mes_referencia and mes_referencia.strip():
+        return query("""
+            SELECT
+                COALESCE(te.organization_id, te.client_id)         AS client_id,
+                COALESCE(te.organization_name, te.client_name, '') AS client_name,
+                ROUND(SUM(te.hours_spent)::numeric, 2)             AS horas_mes_atual,
+                COUNT(DISTINCT te.ticket_id)                       AS tickets_mes_atual,
+                COUNT(te.id)                                       AS lancamentos_mes_atual,
+                MAX(te.entry_date)                                 AS ultimo_lancamento
+            FROM raw.time_entries te
+            WHERE TO_CHAR(te.entry_date, 'YYYY-MM') = :mes_ref
+              AND te.hours_spent > 0
+            GROUP BY 1, 2
+            ORDER BY horas_mes_atual DESC
+        """, {"mes_ref": mes_referencia.strip()})
+
+    return query("""
+        SELECT
+            COALESCE(te.organization_id, te.client_id)         AS client_id,
+            COALESCE(te.organization_name, te.client_name, '') AS client_name,
+            ROUND(SUM(te.hours_spent)::numeric, 2)             AS horas_mes_atual,
+            COUNT(DISTINCT te.ticket_id)                       AS tickets_mes_atual,
+            COUNT(te.id)                                       AS lancamentos_mes_atual,
+            MAX(te.entry_date)                                 AS ultimo_lancamento
+        FROM raw.time_entries te
+        WHERE DATE_TRUNC('month', te.entry_date) = DATE_TRUNC('month', CURRENT_DATE)
+          AND te.hours_spent > 0
+        GROUP BY 1, 2
+        ORDER BY horas_mes_atual DESC
+    """)
 
 
 def consumo_mensal() -> pd.DataFrame:
-    return query("SELECT * FROM analytics.v_consumo_mensal ORDER BY ano_mes, client_name")
+    return query("""
+        SELECT
+            TO_CHAR(te.entry_date, 'YYYY-MM')                  AS ano_mes,
+            COALESCE(te.organization_id, te.client_id)         AS client_id,
+            COALESCE(te.organization_name, te.client_name, '') AS client_name,
+            ROUND(SUM(te.hours_spent)::numeric, 2)             AS horas_consumidas,
+            COUNT(DISTINCT te.ticket_id)                       AS qtd_tickets,
+            COUNT(te.id)                                       AS qtd_lancamentos
+        FROM raw.time_entries te
+        WHERE te.hours_spent > 0
+        GROUP BY 1, 2, 3
+        ORDER BY ano_mes, client_name
+    """)
 
 
 def alerta_consumo() -> pd.DataFrame:
@@ -274,7 +319,12 @@ def etl_historico() -> pd.DataFrame:
 
 
 def meses_disponiveis() -> list:
-    df = query("SELECT DISTINCT ano_mes FROM analytics.v_consumo_mensal ORDER BY ano_mes DESC")
+    df = query("""
+        SELECT DISTINCT TO_CHAR(te.entry_date, 'YYYY-MM') AS ano_mes
+        FROM raw.time_entries te
+        WHERE te.hours_spent > 0
+        ORDER BY ano_mes DESC
+    """)
     return df["ano_mes"].tolist() if not df.empty else []
 
 

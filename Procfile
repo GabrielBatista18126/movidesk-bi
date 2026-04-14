@@ -1,1 +1,1 @@
-web: python -m streamlit run dashboard/app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=false
+web: bash -lc "python scripts/init_db.py && (python scripts/etl_scheduler.py --interval ${ETL_INTERVAL_MINUTES:-30} & python -m streamlit run dashboard/app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=false)"

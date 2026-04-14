@@ -5,6 +5,7 @@ Carrega o .env automaticamente se existir.
 import os
 import logging
 from pathlib import Path
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 # Carrega .env da raiz do projeto (2 níveis acima deste arquivo)
@@ -20,25 +21,63 @@ MOVIDESK_BASE_URL = os.getenv("MOVIDESK_BASE_URL", "https://api.movidesk.com/pub
 
 # ─── PostgreSQL ───────────────────────────────────────────────────
 # Suporta tanto DATABASE_URL (Railway/Neon/Heroku) quanto variáveis separadas (local).
-_DATABASE_URL = os.getenv("DATABASE_URL", "")
-if _DATABASE_URL:
-    from urllib.parse import urlparse
-    _u = urlparse(_DATABASE_URL)
-    DB_CONFIG = {
-        "host":     _u.hostname,
-        "port":     _u.port or 5432,
-        "dbname":   (_u.path or "/").lstrip("/"),
-        "user":     _u.username,
-        "password": _u.password,
-    }
-else:
-    DB_CONFIG = {
-        "host":     os.getenv("DB_HOST",     "localhost"),
-        "port":     int(os.getenv("DB_PORT", "5432")),
-        "dbname":   os.environ["DB_NAME"],
-        "user":     os.environ["DB_USER"],
+def _first_env(*names: str) -> str:
+    for name in names:
+        value = os.getenv(name, "")
+        if value and value.strip():
+            return value.strip()
+    return ""
+
+
+def _as_int(value: str | None, default: int) -> int:
+    try:
+        return int((value or "").strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _build_db_config() -> tuple[dict, str]:
+    database_url = _first_env(
+        "DATABASE_URL",
+        "DATABASE_PRIVATE_URL",
+        "DATABASE_PUBLIC_URL",
+        "POSTGRES_URL",
+        "POSTGRESQL_URL",
+    )
+    if database_url:
+        parsed = urlparse(database_url)
+        return {
+            "host": parsed.hostname,
+            "port": parsed.port or 5432,
+            "dbname": (parsed.path or "/").lstrip("/"),
+            "user": parsed.username,
+            "password": parsed.password,
+        }, "DATABASE_*_URL"
+
+    pg_host = _first_env("PGHOST", "POSTGRES_HOST")
+    pg_port = _first_env("PGPORT", "POSTGRES_PORT")
+    pg_name = _first_env("PGDATABASE", "POSTGRES_DB")
+    pg_user = _first_env("PGUSER", "POSTGRES_USER")
+    pg_pass = _first_env("PGPASSWORD", "POSTGRES_PASSWORD")
+    if pg_host and pg_name and pg_user:
+        return {
+            "host": pg_host,
+            "port": _as_int(pg_port, 5432),
+            "dbname": pg_name,
+            "user": pg_user,
+            "password": (pg_pass or "").strip(),
+        }, "PG*"
+
+    return {
+        "host": os.getenv("DB_HOST", "localhost"),
+        "port": _as_int(os.getenv("DB_PORT"), 5432),
+        "dbname": os.environ["DB_NAME"],
+        "user": os.environ["DB_USER"],
         "password": os.environ["DB_PASSWORD"],
-    }
+    }, "DB_*"
+
+
+DB_CONFIG, DB_CONFIG_SOURCE = _build_db_config()
 
 # ─── ETL ──────────────────────────────────────────────────────────
 PAGE_SIZE   = int(os.getenv("PAGE_SIZE",   "50"))

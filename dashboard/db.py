@@ -13,33 +13,73 @@ from sqlalchemy.engine import URL
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-_DATABASE_URL = os.getenv("DATABASE_URL", "")
-_DB_HOST = os.getenv("DB_HOST", "localhost")
-_DB_PORT = os.getenv("DB_PORT", "5432")
-_DB_NAME = os.getenv("DB_NAME", "movidesk_bi")
-_DB_USER = os.getenv("DB_USER", "movidesk_user")
-_DB_PASS = os.getenv("DB_PASSWORD", "")
-
 _ENGINE = None
+
+
+def _first_env(*names: str) -> str:
+    for name in names:
+        value = os.getenv(name, "")
+        if value and value.strip():
+            return value.strip()
+    return ""
+
+
+def _as_int(value: str | None, default: int) -> int:
+    try:
+        return int((value or "").strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_sqlalchemy_url(raw_url: str) -> str:
+    url = raw_url.strip()
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+psycopg2://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return url
+
+
+def _build_db_url():
+    database_url = _first_env(
+        "DATABASE_URL",
+        "DATABASE_PRIVATE_URL",
+        "DATABASE_PUBLIC_URL",
+        "POSTGRES_URL",
+        "POSTGRESQL_URL",
+    )
+    if database_url:
+        return _normalize_sqlalchemy_url(database_url)
+
+    pg_host = _first_env("PGHOST", "POSTGRES_HOST")
+    pg_port = _first_env("PGPORT", "POSTGRES_PORT")
+    pg_name = _first_env("PGDATABASE", "POSTGRES_DB")
+    pg_user = _first_env("PGUSER", "POSTGRES_USER")
+    pg_pass = _first_env("PGPASSWORD", "POSTGRES_PASSWORD")
+    if pg_host and pg_name and pg_user:
+        return URL.create(
+            drivername="postgresql+psycopg2",
+            username=pg_user,
+            password=(pg_pass or "").strip(),
+            host=pg_host,
+            port=_as_int(pg_port, 5432),
+            database=pg_name,
+        )
+
+    return URL.create(
+        drivername="postgresql+psycopg2",
+        username=os.getenv("DB_USER", "movidesk_user"),
+        password=os.getenv("DB_PASSWORD", ""),
+        host=os.getenv("DB_HOST", "localhost"),
+        port=_as_int(os.getenv("DB_PORT"), 5432),
+        database=os.getenv("DB_NAME", "movidesk_bi"),
+    )
 
 
 def _engine():
     global _ENGINE
     if _ENGINE is None:
-        if _DATABASE_URL:
-            url = _DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
-            if url.startswith("postgresql://"):
-                url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
-        else:
-            url = URL.create(
-                drivername="postgresql+psycopg2",
-                username=_DB_USER,
-                password=_DB_PASS,
-                host=_DB_HOST,
-                port=int(_DB_PORT),
-                database=_DB_NAME,
-            )
-        _ENGINE = create_engine(url, pool_pre_ping=True)
+        _ENGINE = create_engine(_build_db_url(), pool_pre_ping=True)
     return _ENGINE
 
 

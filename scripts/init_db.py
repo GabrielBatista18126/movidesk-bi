@@ -1,26 +1,29 @@
 """
-init_db.py — Executa todas as migrations SQL em ordem, apenas uma vez cada.
+init_db.py - Executa todas as migrations SQL em ordem, apenas uma vez cada.
 
-Sem dependência do dashboard/Streamlit: usa psycopg2 direto para que possa
+Sem dependencia do dashboard/Streamlit: usa psycopg2 direto para que possa
 rodar em containers enxutos (Railway/Render) antes do app subir.
 """
 import logging
 import os
 import re
 import sys
+import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import psycopg2
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 except ImportError:
     pass
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] init_db — %(message)s",
+    format="%(asctime)s [%(levelname)s] init_db - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
@@ -35,84 +38,114 @@ CREATE TABLE IF NOT EXISTS public.schema_migrations (
 """
 
 
-def _conn_kwargs() -> dict:
-    """Build psycopg2 connection kwargs, always forcing TCP mode via an explicit host.
+def _first_env(*names: str) -> str:
+    for name in names:
+        value = os.getenv(name, "")
+        if value and value.strip():
+            return value.strip()
+    return ""
 
-    Priority:
-      1. Individual DB_* variables (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD)
-      2. DATABASE_URL fallback — host is extracted and re-injected to guarantee TCP
 
-    Raises ValueError if required variables are missing or if host cannot be
-    determined (which would cause psycopg2 to fall back to a Unix socket).
-    """
-    host = os.getenv("DB_HOST", "")
-    port = os.getenv("DB_PORT", "")
-    dbname = os.getenv("DB_NAME", "")
-    user = os.getenv("DB_USER", "")
-    password = os.getenv("DB_PASSWORD", "")
+def _as_int(value: str | None, default: int) -> int:
+    try:
+        return int((value or "").strip())
+    except (TypeError, ValueError):
+        return default
 
-    # Prefer individual variables — they are the most reliable on Railway.
-    if host and dbname and user and password:
-        kwargs = {
-            "host":     host,
-            "port":     int(port) if port else 5432,
-            "dbname":   dbname,
-            "user":     user,
-            "password": password,
-        }
-        logger.info(
-            "Conectando via variáveis DB_*: host=%s port=%s dbname=%s user=%s",
-            kwargs["host"], kwargs["port"], kwargs["dbname"], kwargs["user"],
+
+def _build_kwargs_from_url(database_url: str) -> dict:
+    parsed = urlparse(database_url.strip())
+    kwargs = {
+        "host": parsed.hostname or "",
+        "port": parsed.port or 5432,
+        "dbname": (parsed.path or "").lstrip("/"),
+        "user": parsed.username or "",
+        "password": parsed.password or "",
+    }
+    missing = [k for k in ("host", "dbname", "user") if not kwargs[k]]
+    if missing:
+        raise ValueError(
+            "DATABASE_URL incompleta - campos ausentes: "
+            f"{missing}. Esperado: postgresql://user:pass@host:port/db"
         )
-        return kwargs
+    return kwargs
 
-    # Fall back to DATABASE_URL, but parse it so we can enforce an explicit host.
-    url = os.getenv("DATABASE_URL", "")
-    if url:
-        try:
-            from urllib.parse import urlparse
-            parsed = urlparse(url)
-            parsed_host = parsed.hostname or ""
-            parsed_port = parsed.port or 5432
-            parsed_dbname = (parsed.path or "").lstrip("/")
-            parsed_user = parsed.username or ""
-            parsed_password = parsed.password or ""
 
-            missing = [k for k, v in {
-                "host": parsed_host,
-                "dbname": parsed_dbname,
-                "user": parsed_user,
-                "password": parsed_password,
-            }.items() if not v]
-            if missing:
-                raise ValueError(
-                    f"DATABASE_URL está incompleta — campos ausentes: {missing}"
-                )
+def _conn_kwargs() -> tuple[dict, str]:
+    # 1) Preferencia por URL completa (ambientes PaaS)
+    database_url = _first_env(
+        "DATABASE_URL",
+        "DATABASE_PRIVATE_URL",
+        "DATABASE_PUBLIC_URL",
+        "POSTGRES_URL",
+        "POSTGRESQL_URL",
+    )
+    if database_url:
+        return _build_kwargs_from_url(database_url), "DATABASE_URL"
 
-            kwargs = {
-                "host":     parsed_host,
-                "port":     parsed_port,
-                "dbname":   parsed_dbname,
-                "user":     parsed_user,
-                "password": parsed_password,
-            }
-            logger.info(
-                "Conectando via DATABASE_URL: host=%s port=%s dbname=%s user=%s",
-                kwargs["host"], kwargs["port"], kwargs["dbname"], kwargs["user"],
-            )
-            return kwargs
-        except Exception as exc:
-            raise ValueError(f"Falha ao interpretar DATABASE_URL: {exc}") from exc
+    # 2) Variaveis padrao PG*
+    pg_host = _first_env("PGHOST", "POSTGRES_HOST")
+    pg_name = _first_env("PGDATABASE", "POSTGRES_DB")
+    pg_user = _first_env("PGUSER", "POSTGRES_USER")
+    pg_pass = _first_env("PGPASSWORD", "POSTGRES_PASSWORD")
+    pg_port = _first_env("PGPORT", "POSTGRES_PORT")
+    if pg_host and pg_name and pg_user:
+        return {
+            "host": pg_host,
+            "port": _as_int(pg_port, 5432),
+            "dbname": pg_name,
+            "user": pg_user,
+            "password": pg_pass,
+        }, "PG*"
 
-    # Neither individual vars nor DATABASE_URL are usable.
-    missing_vars = [
-        v for v in ("DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD")
+    # 3) Variaveis DB_* legadas
+    db_host = _first_env("DB_HOST")
+    db_name = _first_env("DB_NAME")
+    db_user = _first_env("DB_USER")
+    db_pass = os.getenv("DB_PASSWORD", "")
+    db_port = os.getenv("DB_PORT")
+    if db_host and db_name and db_user:
+        return {
+            "host": db_host,
+            "port": _as_int(db_port, 5432),
+            "dbname": db_name,
+            "user": db_user,
+            "password": (db_pass or "").strip(),
+        }, "DB_*"
+
+    missing = [
+        v
+        for v in ("DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD")
         if not os.getenv(v)
     ]
     raise ValueError(
-        "Nenhuma configuração de banco encontrada. "
-        f"Configure DATABASE_URL ou as variáveis: {missing_vars}"
+        "Nenhuma configuracao de banco encontrada. "
+        f"Configure DATABASE_URL ou as variaveis: {missing}"
     )
+
+
+def _connect_with_retry(kw: dict):
+    retries = _as_int(os.getenv("DB_CONNECT_RETRIES"), 12)
+    delay = float(os.getenv("DB_CONNECT_DELAY", "5"))
+    last_exc = None
+
+    for attempt in range(1, retries + 1):
+        try:
+            return psycopg2.connect(**kw)
+        except psycopg2.OperationalError as exc:
+            last_exc = exc
+            if attempt == retries:
+                raise
+            logger.warning(
+                "Banco indisponivel (tentativa %d/%d). Nova tentativa em %.1fs: %s",
+                attempt,
+                retries,
+                delay,
+                exc,
+            )
+            time.sleep(delay)
+
+    raise last_exc
 
 
 def _ordem(path: Path) -> int:
@@ -126,8 +159,17 @@ def main() -> None:
         logger.warning("Nenhum .sql encontrado em %s", SQL_DIR)
         return
 
-    kw = _conn_kwargs()
-    with psycopg2.connect(**kw) as conn:
+    kw, source = _conn_kwargs()
+    logger.info(
+        "Conectando via %s: host=%s port=%s dbname=%s user=%s",
+        source,
+        kw.get("host"),
+        kw.get("port"),
+        kw.get("dbname"),
+        kw.get("user"),
+    )
+
+    with _connect_with_retry(kw) as conn:
         with conn.cursor() as cur:
             cur.execute(_CREATE_LEDGER)
             cur.execute("SELECT filename FROM public.schema_migrations")
@@ -136,12 +178,12 @@ def main() -> None:
 
         pendentes = [f for f in files if f.name not in aplicadas]
         if not pendentes:
-            logger.info("Banco já atualizado — %d migrations aplicadas.", len(aplicadas))
+            logger.info("Banco ja atualizado - %d migrations aplicadas.", len(aplicadas))
             return
 
         logger.info("Aplicando %d migrations pendentes...", len(pendentes))
         for f in pendentes:
-            logger.info("→ %s", f.name)
+            logger.info("-> %s", f.name)
             sql = f.read_text(encoding="utf-8")
             try:
                 with conn.cursor() as cur:
@@ -162,5 +204,5 @@ if __name__ == "__main__":
     try:
         main()
     except (KeyError, ValueError) as exc:
-        logger.error("Erro de configuração: %s", exc)
+        logger.error("Erro de configuracao: %s", exc)
         sys.exit(1)

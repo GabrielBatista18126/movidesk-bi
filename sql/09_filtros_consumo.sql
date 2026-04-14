@@ -14,6 +14,11 @@ DROP VIEW IF EXISTS analytics.v_historico_consumo   CASCADE;
 DROP VIEW IF EXISTS analytics.v_consumo_mensal      CASCADE;
 DROP VIEW IF EXISTS analytics.v_resumo_mes_atual    CASCADE;
 
+-- Compatibilidade: esta migration usa tickets_excluidos antes da 10_*.
+-- Em bases novas, garantimos que a coluna exista neste ponto.
+ALTER TABLE analytics.contratos
+    ADD COLUMN IF NOT EXISTS tickets_excluidos TEXT DEFAULT '';
+
 -- =============================================================================
 -- Helper: função inline para verificar se ticket está excluído do contrato
 -- Lógica: para cada time_entry, procura se existe contrato ativo para o cliente
@@ -168,3 +173,4 @@ LEFT JOIN scores s ON s.client_id = h.client_id
 WHERE h.media_horas_6m > h.horas_contratadas * 0.6
   AND h.meses_com_dados >= 2
 ORDER BY h.meses_estourados DESC, h.media_horas_6m DESC;
+

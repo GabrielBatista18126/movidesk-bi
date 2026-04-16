@@ -97,6 +97,7 @@ with st.sidebar:
             "🎫 Tickets em Aberto",
             "🤖 Inteligência",
             "⚙️ Monitor ETL",
+            "Relatórios",
         ]
         if _u.get("is_admin"):
             opcoes.append("👤 Usuários")
@@ -169,6 +170,10 @@ elif pagina == "🤖 Inteligência":
 elif pagina == "⚙️ Monitor ETL":
     from dashboard._pages import etl_monitor
     etl_monitor.render()
+
+elif pagina == "Relatórios":
+    from dashboard._pages import relatorios
+    relatorios.render()
 
 elif pagina == "🧑‍💻 Minha fila":
     from dashboard._pages import minha_fila

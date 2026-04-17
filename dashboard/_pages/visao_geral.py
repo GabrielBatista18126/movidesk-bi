@@ -40,10 +40,6 @@ def _cor_risco(risco: str) -> str:
 def render():
     # ── Carrega dados (sem filtro) ──────────────────────────────
     horas_dia_raw = db.horas_por_dia_agente()
-    horas_cliente_raw = db.horas_por_cliente_mes()
-    horas_analista_raw = db.horas_por_analista_mes()
-    tipo_prob_raw = db.tipo_problema_mes()
-    prioridade_raw = db.prioridade_mes()
 
     # ── Filtros ──────────────────────────────────────────────────
     datas_disp = sorted(horas_dia_raw["data"].unique().tolist()) if not horas_dia_raw.empty else []
@@ -71,34 +67,23 @@ def render():
                         unsafe_allow_html=True)
 
     # ── Aplica filtros ──────────────────────────────────────────
-    horas_dia = horas_dia_raw.copy()
-    horas_cliente = horas_cliente_raw.copy()
-    horas_analista = horas_analista_raw.copy()
-    tipo_prob = tipo_prob_raw.copy()
-    prioridade = prioridade_raw.copy()
-
     filtro_data_ativo = opcao_data != "Todos os dias"
     filtro_analista_ativo = opcao_analista != "Todos os analistas"
 
-    if filtro_data_ativo:
-        horas_dia = horas_dia[horas_dia["data"].astype(str) == opcao_data]
-    if filtro_analista_ativo:
-        horas_dia = horas_dia[horas_dia["analista"] == opcao_analista]
-        horas_analista = horas_analista[horas_analista["analista"] == opcao_analista]
+    analista_filtro = opcao_analista if filtro_analista_ativo else None
+    data_filtro = opcao_data if filtro_data_ativo else None
 
-    # Recalcula KPIs a partir dos dados filtrados
-    total_horas = float(horas_dia["horas"].sum()) if not horas_dia.empty else 0
-    total_apontamentos = int(horas_analista["apontamentos"].sum()) if not horas_analista.empty else 0
-    total_clientes = int(horas_analista["clientes"].sum()) if not horas_analista.empty else 0
-    total_analistas = int(horas_analista["analista"].nunique()) if not horas_analista.empty else 0
+    horas_dia = db.horas_por_dia_agente(analista=analista_filtro, data_ref=data_filtro)
+    horas_cliente = db.horas_por_cliente_mes(analista=analista_filtro, data_ref=data_filtro)
+    horas_analista = db.horas_por_analista_mes(analista=analista_filtro, data_ref=data_filtro)
+    tipo_prob = db.tipo_problema_mes(analista=analista_filtro, data_ref=data_filtro)
+    prioridade = db.prioridade_mes(analista=analista_filtro, data_ref=data_filtro)
 
-    # Se nenhum filtro, usa KPIs originais (mais precisos)
-    if not filtro_data_ativo and not filtro_analista_ativo:
-        kpis = db.visao_geral_kpis()
-        total_horas = _safe_float(kpis["total_horas"].iloc[0]) if not kpis.empty else 0
-        total_apontamentos = _safe_int(kpis["total_apontamentos"].iloc[0]) if not kpis.empty else 0
-        total_clientes = _safe_int(kpis["total_clientes"].iloc[0]) if not kpis.empty else 0
-        total_analistas = _safe_int(kpis["total_analistas"].iloc[0]) if not kpis.empty else 0
+    kpis = db.visao_geral_kpis(analista=analista_filtro, data_ref=data_filtro)
+    total_horas = _safe_float(kpis["total_horas"].iloc[0]) if not kpis.empty else 0
+    total_apontamentos = _safe_int(kpis["total_apontamentos"].iloc[0]) if not kpis.empty else 0
+    total_clientes = _safe_int(kpis["total_clientes"].iloc[0]) if not kpis.empty else 0
+    total_analistas = _safe_int(kpis["total_analistas"].iloc[0]) if not kpis.empty else 0
 
     # ── Banner de alerta ─────────────────────────────────────────
     if not horas_cliente.empty and not horas_analista.empty:

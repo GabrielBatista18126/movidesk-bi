@@ -489,23 +489,45 @@ def meses_disponiveis() -> list:
 
 # ── Queries para Visão Geral (estilo referência) ────────────────
 
-def visao_geral_kpis() -> pd.DataFrame:
+def _filtros_visao_geral(
+    analista: str | None = None,
+    data_ref: str | None = None,
+) -> tuple[dict, str]:
+    params = {"analista": analista, "data_ref": data_ref}
+    filtros = """
+          AND (:analista IS NULL OR COALESCE(a.business_name, te.agent_name, 'Sem agente') = :analista)
+          AND (:data_ref IS NULL OR te.entry_date::date = CAST(:data_ref AS date))
+    """
+    return params, filtros
+
+
+def visao_geral_kpis(
+    analista: str | None = None,
+    data_ref: str | None = None,
+) -> pd.DataFrame:
     """KPIs: total horas, apontamentos, clientes, analistas."""
-    return query("""
+    params, filtros = _filtros_visao_geral(analista, data_ref)
+    return query(f"""
         SELECT
             ROUND(SUM(te.hours_spent)::numeric, 1)           AS total_horas,
             COUNT(*)                                          AS total_apontamentos,
             COUNT(DISTINCT COALESCE(te.organization_id, te.client_id)) AS total_clientes,
             COUNT(DISTINCT te.agent_id)                       AS total_analistas
         FROM raw.time_entries te
+        LEFT JOIN raw.agentes a ON a.id = te.agent_id
         WHERE DATE_TRUNC('month', te.entry_date) = DATE_TRUNC('month', CURRENT_DATE)
           AND te.hours_spent > 0
-    """)
+          {filtros}
+    """, params)
 
 
-def horas_por_dia_agente() -> pd.DataFrame:
+def horas_por_dia_agente(
+    analista: str | None = None,
+    data_ref: str | None = None,
+) -> pd.DataFrame:
     """Horas lançadas por colaborador por dia (mês atual)."""
-    return query("""
+    params, filtros = _filtros_visao_geral(analista, data_ref)
+    return query(f"""
         SELECT
             te.entry_date::date                                AS data,
             COALESCE(a.business_name, te.agent_name, 'Sem agente') AS analista,
@@ -514,29 +536,40 @@ def horas_por_dia_agente() -> pd.DataFrame:
         LEFT JOIN raw.agentes a ON a.id = te.agent_id
         WHERE DATE_TRUNC('month', te.entry_date) = DATE_TRUNC('month', CURRENT_DATE)
           AND te.hours_spent > 0
+          {filtros}
         GROUP BY 1, 2
         ORDER BY 1, 2
-    """)
+    """, params)
 
 
-def horas_por_cliente_mes() -> pd.DataFrame:
+def horas_por_cliente_mes(
+    analista: str | None = None,
+    data_ref: str | None = None,
+) -> pd.DataFrame:
     """Horas por cliente no mês atual."""
-    return query("""
+    params, filtros = _filtros_visao_geral(analista, data_ref)
+    return query(f"""
         SELECT
             COALESCE(te.organization_name, te.client_name, '') AS cliente,
             ROUND(SUM(te.hours_spent)::numeric, 1)             AS horas,
             COUNT(*)                                            AS apontamentos
         FROM raw.time_entries te
+        LEFT JOIN raw.agentes a ON a.id = te.agent_id
         WHERE DATE_TRUNC('month', te.entry_date) = DATE_TRUNC('month', CURRENT_DATE)
           AND te.hours_spent > 0
+          {filtros}
         GROUP BY 1
         ORDER BY 2 DESC
-    """)
+    """, params)
 
 
-def horas_por_analista_mes() -> pd.DataFrame:
+def horas_por_analista_mes(
+    analista: str | None = None,
+    data_ref: str | None = None,
+) -> pd.DataFrame:
     """Carga por analista no mês atual."""
-    return query("""
+    params, filtros = _filtros_visao_geral(analista, data_ref)
+    return query(f"""
         SELECT
             COALESCE(a.business_name, te.agent_name, 'Sem agente') AS analista,
             ROUND(SUM(te.hours_spent)::numeric, 1)                  AS horas,
@@ -546,14 +579,19 @@ def horas_por_analista_mes() -> pd.DataFrame:
         LEFT JOIN raw.agentes a ON a.id = te.agent_id
         WHERE DATE_TRUNC('month', te.entry_date) = DATE_TRUNC('month', CURRENT_DATE)
           AND te.hours_spent > 0
+          {filtros}
         GROUP BY 1
         ORDER BY 2 DESC
-    """)
+    """, params)
 
 
-def tipo_problema_mes() -> pd.DataFrame:
+def tipo_problema_mes(
+    analista: str | None = None,
+    data_ref: str | None = None,
+) -> pd.DataFrame:
     """Distribuição por categoria+tipo (tipo de problema) no mês atual."""
-    return query("""
+    params, filtros = _filtros_visao_geral(analista, data_ref)
+    return query(f"""
         SELECT
             COALESCE(NULLIF(t.category, ''), 'Sem categoria')
                 || ' - '
@@ -561,18 +599,24 @@ def tipo_problema_mes() -> pd.DataFrame:
             ROUND(SUM(te.hours_spent)::numeric, 1) AS horas,
             COUNT(*) AS qtd
         FROM raw.time_entries te
+        LEFT JOIN raw.agentes a ON a.id = te.agent_id
         JOIN raw.tickets t ON t.id = te.ticket_id
         WHERE DATE_TRUNC('month', te.entry_date) = DATE_TRUNC('month', CURRENT_DATE)
           AND te.hours_spent > 0
+          {filtros}
         GROUP BY 1
         ORDER BY 2 DESC
         LIMIT 10
-    """)
+    """, params)
 
 
-def prioridade_mes() -> pd.DataFrame:
+def prioridade_mes(
+    analista: str | None = None,
+    data_ref: str | None = None,
+) -> pd.DataFrame:
     """Distribuição por categoria + urgência no mês atual."""
-    return query("""
+    params, filtros = _filtros_visao_geral(analista, data_ref)
+    return query(f"""
         SELECT
             COALESCE(t.category, 'Sem categoria')
                 || ' - '
@@ -580,12 +624,14 @@ def prioridade_mes() -> pd.DataFrame:
             COUNT(DISTINCT te.ticket_id) AS qtd_tickets,
             ROUND(SUM(te.hours_spent)::numeric, 1) AS horas
         FROM raw.time_entries te
+        LEFT JOIN raw.agentes a ON a.id = te.agent_id
         JOIN raw.tickets t ON t.id = te.ticket_id
         WHERE DATE_TRUNC('month', te.entry_date) = DATE_TRUNC('month', CURRENT_DATE)
           AND te.hours_spent > 0
+          {filtros}
         GROUP BY 1
         ORDER BY 2 DESC
-    """)
+    """, params)
 
 
 def datas_disponiveis_mes() -> list:

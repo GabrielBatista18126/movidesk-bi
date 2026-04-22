@@ -1,7 +1,4 @@
 """Página: Visão Geral — Layout baseado no dashboard de referência."""
-import re
-import unicodedata
-
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
@@ -38,12 +35,6 @@ def _risco_cliente(horas: float, total: float) -> str:
 
 def _cor_risco(risco: str) -> str:
     return {"alto": "#e74c3c", "médio": "#f39c12", "baixo": "#2ecc71"}.get(risco, "#999")
-
-
-def _slug_tipo(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^a-zA-Z0-9]+", "_", normalized).strip("_").lower()
-    return slug or "sem_tipo"
 
 
 def render():
@@ -183,7 +174,6 @@ def render():
                 names="tipo",
                 values="horas",
                 hole=0.45,
-                custom_data=["tipo"],
             )
             fig_tipo.update_layout(
                 height=350,
@@ -191,78 +181,8 @@ def render():
                 paper_bgcolor="rgba(0,0,0,0)",
                 legend=dict(font=dict(size=10)),
             )
-            evento_tipo = st.plotly_chart(
-                fig_tipo,
-                width="stretch",
-                key="visao_tipo_demanda_chart",
-                on_select="rerun",
-                selection_mode="points",
-            )
+            st.plotly_chart(fig_tipo, width="stretch")
 
-            pontos = []
-            if evento_tipo and evento_tipo.selection:
-                pontos = evento_tipo.selection.get("points", [])
-
-            if pontos:
-                ponto = pontos[0]
-                tipo_evento = None
-                custom_data = ponto.get("customdata")
-                if isinstance(custom_data, (list, tuple)) and custom_data:
-                    tipo_evento = str(custom_data[0])
-                elif ponto.get("label") is not None:
-                    tipo_evento = str(ponto["label"])
-
-                if tipo_evento:
-                    st.session_state["visao_tipo_demanda_sel"] = tipo_evento
-
-            tipo_selecionado = st.session_state.get("visao_tipo_demanda_sel")
-            tipos_disponiveis = set(tipo_prob["tipo"].astype(str).tolist())
-
-            if tipo_selecionado not in tipos_disponiveis:
-                tipo_selecionado = None
-                st.session_state["visao_tipo_demanda_sel"] = None
-
-            if tipo_selecionado:
-                st.caption(f"Tipo selecionado: **{tipo_selecionado}**")
-                tickets_tipo = db.tickets_por_tipo_demanda_mes(
-                    tipo=tipo_selecionado,
-                    analista=analista_filtro,
-                    data_ref=data_filtro,
-                )
-
-                if tickets_tipo.empty:
-                    st.info("Nenhum ticket encontrado para o tipo selecionado nos filtros atuais.")
-                else:
-                    df_export = tickets_tipo.copy()
-                    df_export["Ticket"] = "#" + df_export["ticket_id"].astype(str)
-                    df_export = df_export.rename(columns={
-                        "subject": "Título",
-                        "cliente": "Cliente",
-                    })[["Ticket", "Título", "Cliente"]]
-
-                    st.dataframe(
-                        df_export,
-                        width="stretch",
-                        hide_index=True,
-                        height=min(420, 40 + len(df_export) * 35),
-                    )
-
-                    mes_ref_arquivo = pd.Timestamp.now().strftime("%Y_%m")
-                    tipo_arquivo = _slug_tipo(tipo_selecionado)
-                    st.download_button(
-                        "Baixar CSV do tipo selecionado",
-                        data=df_export.to_csv(index=False).encode("utf-8-sig"),
-                        file_name=f"movidesk_tickets_tipo_{tipo_arquivo}_{mes_ref_arquivo}.csv",
-                        mime="text/csv",
-                        use_container_width=True,
-                    )
-
-                if st.button("Limpar seleção", key="limpar_tipo_demanda", use_container_width=True):
-                    st.session_state["visao_tipo_demanda_sel"] = None
-            else:
-                st.caption("Clique em um tipo no gráfico para listar tickets e exportar CSV.")
-        else:
-            st.caption("Sem dados de tipo de problema para os filtros selecionados.")
     # ── Carga por analista + Prioridade ──────────────────────────
     st.markdown("---")
     col3, col4 = st.columns(2)

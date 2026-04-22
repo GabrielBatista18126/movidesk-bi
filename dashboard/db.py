@@ -589,11 +589,13 @@ def tipo_problema_mes(
     analista: str | None = None,
     data_ref: str | None = None,
 ) -> pd.DataFrame:
-    """Distribuicao por tipo de demanda (ticket_type) no mes atual."""
+    """Distribuição por categoria+tipo (tipo de problema) no mês atual."""
     params, filtros = _filtros_visao_geral(analista, data_ref)
     return query(f"""
         SELECT
-            COALESCE(NULLIF(t.ticket_type, ''), 'Sem tipo') AS tipo,
+            COALESCE(NULLIF(t.category, ''), 'Sem categoria')
+                || ' - '
+                || COALESCE(NULLIF(t.ticket_type, ''), 'Sem tipo') AS tipo,
             ROUND(SUM(te.hours_spent)::numeric, 1) AS horas,
             COUNT(*) AS qtd
         FROM raw.time_entries te
@@ -607,49 +609,6 @@ def tipo_problema_mes(
         LIMIT 10
     """, params)
 
-
-def tickets_por_tipo_demanda_mes(
-    tipo: str,
-    analista: str | None = None,
-    data_ref: str | None = None,
-) -> pd.DataFrame:
-    """Tickets do mes atual por tipo de demanda, deduplicados por ticket."""
-    params, filtros = _filtros_visao_geral(analista, data_ref)
-    params = {**params, "tipo": tipo}
-    return query(f"""
-        WITH base AS (
-            SELECT
-                te.ticket_id,
-                COALESCE(NULLIF(t.subject, ''), '-') AS subject,
-                COALESCE(
-                    NULLIF(t.organization_name, ''),
-                    NULLIF(t.client_name, ''),
-                    COALESCE(te.organization_name, te.client_name, '-')
-                ) AS cliente,
-                te.entry_date
-            FROM raw.time_entries te
-            LEFT JOIN raw.agentes a ON a.id = te.agent_id
-            JOIN raw.tickets t ON t.id = te.ticket_id
-            WHERE DATE_TRUNC('month', te.entry_date) = DATE_TRUNC('month', CURRENT_DATE)
-              AND te.hours_spent > 0
-              AND COALESCE(NULLIF(t.ticket_type, ''), 'Sem tipo') = :tipo
-              {filtros}
-        ),
-        dedup AS (
-            SELECT DISTINCT ON (ticket_id)
-                ticket_id,
-                subject,
-                cliente
-            FROM base
-            ORDER BY ticket_id, entry_date DESC
-        )
-        SELECT
-            ticket_id,
-            subject,
-            cliente
-        FROM dedup
-        ORDER BY ticket_id DESC
-    """, params)
 
 def prioridade_mes(
     analista: str | None = None,
@@ -988,4 +947,3 @@ def ticket_medio_por_categoria() -> pd.DataFrame:
         HAVING COUNT(DISTINCT te.ticket_id) >= 2
         ORDER BY horas_por_ticket DESC
     """)
-
